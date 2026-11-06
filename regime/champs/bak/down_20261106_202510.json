@@ -1,0 +1,45 @@
+{
+  "regime": "down",
+  "label": "单边下跌",
+  "fam": "ext_rev",
+  "tf": "3m",
+  "p": {
+    "L": 1,
+    "m": 300,
+    "k": 5,
+    "dir": "short",
+    "htf": 0,
+    "htf_ema": 20,
+    "sl": 3.5,
+    "tp": 4,
+    "ts": 80,
+    "cool": 45
+  },
+  "sz": {
+    "margin": 0.1,
+    "lev": 8,
+    "maxpos": 3
+  },
+  "sized": {
+    "week": {
+      "net": 0.0782,
+      "sh": 3.48
+    },
+    "month": {
+      "net": 0.1978,
+      "dd": -0.091,
+      "sh": 3.67
+    },
+    "prior": {
+      "net": 0.0943
+    },
+    "ho_sh": 3.48,
+    "net": 0.0782,
+    "dd": -0.091,
+    "note": "min(week,30d) Sharpe~3.48; week+7.82% 30d+19.78%"
+  },
+  "ft": "OK 3m Sharpe~3 ext_rev paper 2026-11-06",
+  "active": true,
+  "source": "paper3m champ3m.json",
+  "switched_bj": "2026-11-06 20:20"
+}

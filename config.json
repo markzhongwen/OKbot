@@ -1,0 +1,3 @@
+{"exchange":{"name":"okx","pair_whitelist":["BTC/USDT:USDT","ETH/USDT:USDT","SOL/USDT:USDT","XRP/USDT:USDT","DOGE/USDT:USDT","BNB/USDT:USDT","ADA/USDT:USDT","LINK/USDT:USDT","AVAX/USDT:USDT","LTC/USDT:USDT","DOT/USDT:USDT","BCH/USDT:USDT","TRX/USDT:USDT","SUI/USDT:USDT","NEAR/USDT:USDT","APT/USDT:USDT","ARB/USDT:USDT","OP/USDT:USDT","FIL/USDT:USDT","UNI/USDT:USDT"]},
+"trading_mode":"futures","margin_mode":"isolated","stake_currency":"USDT","stake_amount":"unlimited","dry_run":true,"max_open_trades":3,"timeframe":"1h","fee":0.0007,
+"entry_pricing":{"price_side":"other"},"exit_pricing":{"price_side":"other"},"pairlists":[{"method":"StaticPairList"}],"datadir":"C:/Users/matth/okx-bt/data/okx","user_data_dir":"C:/Users/matth/okx-bt/ud"}

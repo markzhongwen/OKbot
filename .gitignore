@@ -1,0 +1,14 @@
+﻿venv/
+okx-bt-code.tgz
+okx-bt-data.tgz
+ud/**/*.parquet
+ud/**/*.feather
+ud/**/*.csv
+**/__pycache__/
+*.pyc
+reports/*.html
+reports/*.log
+intraday/*.jsonl
+intraday/SEARCH_*.md
+intraday/champion.json
+.ssh/

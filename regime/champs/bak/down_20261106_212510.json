@@ -1,0 +1,58 @@
+{
+  "regime": "down",
+  "label": "单边下跌",
+  "fam": "liq_casc",
+  "tf": "3m",
+  "p": {
+    "L": 1,
+    "mv": 0.5,
+    "br": 0.5,
+    "k": 2,
+    "vz": 2,
+    "dir": "short",
+    "htf": 0,
+    "htf_ema": 20,
+    "sl": 2.5,
+    "tp": 4,
+    "ts": 40,
+    "cool": 45
+  },
+  "sz": {
+    "margin": 0.1,
+    "lev": 5,
+    "maxpos": 3
+  },
+  "sized": {
+    "week": {
+      "net": 0.0323,
+      "dd": -0.013,
+      "sh": 10.975,
+      "tr": 26
+    },
+    "month": {
+      "net": 0.1119,
+      "dd": -0.0343,
+      "sh": 7.078,
+      "tr": 88
+    },
+    "prior": {
+      "final": 26.26,
+      "net": 0.0502,
+      "dd": -0.0048,
+      "sh": 33.539,
+      "tr": 12,
+      "liq": 0,
+      "sl_beyond": 0,
+      "worst_day": 0.0051
+    },
+    "ho_sh": 7.078,
+    "net": 0.0323,
+    "dd": -0.0343
+  },
+  "ft": "OK auto-promote 2026-11-06 20:25:10 from search_3m",
+  "active": true,
+  "placeholder": false,
+  "source": "search_3m auto-promote",
+  "switched_bj": "2026-11-06 20:25:10",
+  "prev": "ext_rev {'L': 1, 'm': 300, 'k': 5, 'dir': 'short', 'htf': 0, 'htf_ema': 20, 'sl': 3.5, 'tp': 4, 'ts': 80, 'cool': 45}"
+}

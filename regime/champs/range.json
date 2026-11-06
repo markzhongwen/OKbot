@@ -1,0 +1,55 @@
+{
+  "regime": "range",
+  "label": "横盘",
+  "fam": "rsi_mr",
+  "tf": "3m",
+  "p": {
+    "n": 14,
+    "lo": 10,
+    "dir": "both",
+    "htf": 0,
+    "htf_ema": 50,
+    "sl": 2,
+    "tp": 3,
+    "ts": 100,
+    "cool": 45
+  },
+  "sz": {
+    "margin": 0.06,
+    "lev": 10,
+    "maxpos": 4
+  },
+  "sized": {
+    "week": {
+      "net": 0.0258,
+      "dd": -0.0222,
+      "sh": 7.243,
+      "tr": 12
+    },
+    "month": {
+      "net": 0.0632,
+      "dd": -0.0357,
+      "sh": 4.555,
+      "tr": 40
+    },
+    "prior": {
+      "final": 25.07,
+      "net": 0.0028,
+      "dd": -0.0056,
+      "sh": 2.468,
+      "tr": 6,
+      "liq": 0,
+      "sl_beyond": 0,
+      "worst_day": -0.0046
+    },
+    "ho_sh": 4.555,
+    "net": 0.0258,
+    "dd": -0.0357
+  },
+  "ft": "OK auto-promote 2026-11-06 21:25:10 from search_3m",
+  "active": true,
+  "placeholder": false,
+  "source": "search_3m auto-promote",
+  "switched_bj": "2026-11-06 21:25:10",
+  "prev": "rsi_mr {'n': 14, 'lo': 20, 'dir': 'both', 'htf': 0, 'htf_ema': 20, 'sl': 2.5, 'tp': 0, 'ts': 140, 'cool': 30}"
+}

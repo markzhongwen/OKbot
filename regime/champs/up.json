@@ -1,0 +1,32 @@
+{
+  "regime": "up",
+  "label": "单边上涨",
+  "fam": "orb",
+  "tf": "15m",
+  "p": {
+    "open_min": 840,
+    "range_min": 30,
+    "win_min": 60,
+    "fade": 1,
+    "sl": 3,
+    "tp": 4,
+    "ts": 12,
+    "cool": 6,
+    "dir": "long",
+    "htf": 240,
+    "htf_ema": 20
+  },
+  "sz": {"margin": 0.15, "lev": 3, "maxpos": 3},
+  "sized": {
+    "ho_sh": 3.873,
+    "tr_sh": 3.159,
+    "net": 0.4535,
+    "dd": -0.1071,
+    "final": 36.34,
+    "note": "15m orb fade long formal balanced; all-Sharpe~3.21"
+  },
+  "ft": "OK trades 575 / 3.12, profit 6.39%, PF 1.50, DD 3.71%, Sharpe 2.20",
+  "active": true,
+  "source": "week_fit_champ / champion.json paper",
+  "switched_bj": "2026-11-06 20:20"
+}

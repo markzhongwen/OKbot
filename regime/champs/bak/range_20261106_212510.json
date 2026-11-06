@@ -1,0 +1,35 @@
+{
+  "regime": "range",
+  "label": "横盘",
+  "fam": "rsi_mr",
+  "tf": "3m",
+  "p": {
+    "n": 14,
+    "lo": 20,
+    "dir": "both",
+    "htf": 0,
+    "htf_ema": 20,
+    "sl": 2.5,
+    "tp": 0,
+    "ts": 140,
+    "cool": 30
+  },
+  "sz": {
+    "margin": 0.06,
+    "lev": 10,
+    "maxpos": 4
+  },
+  "sized": {
+    "net": 0.1813,
+    "month": 0.1838,
+    "prior": 0.0452,
+    "ho_sh": null,
+    "dd": null,
+    "note": "adapted from rsi_mr short bak (week+18%/30d+18%); dir=both for range MR; search continues for fee-aware both champ"
+  },
+  "ft": "OK 3m rsi_mr range placeholder both 2026-11-06",
+  "active": true,
+  "placeholder": true,
+  "source": "paper3m bak rsi_mr + dir both",
+  "switched_bj": "2026-11-06 20:20"
+}
