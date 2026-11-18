@@ -1,0 +1,210 @@
+from datetime import datetime, timezone
+
+import pytest
+
+from cost_aware.config import ExecutionConfig, SizingConfig
+from cost_aware.engine import Trade, run_backtest
+
+
+UTC = timezone.utc
+
+
+def ts(hour: int) -> datetime:
+    return datetime(2026, 1, 1, hour, tzinfo=UTC)
+
+
+def candle(symbol: str, hour: int, open_: float, high: float, low: float, close: float):
+    return {
+        "symbol": symbol,
+        "timestamp": ts(hour),
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+    }
+
+
+def signal(symbol: str, hour: int, side: str, stop: float, take_profit: float):
+    return {
+        "symbol": symbol,
+        "timestamp": ts(hour),
+        "side": side,
+        "stop": stop,
+        "take_profit": take_profit,
+    }
+
+
+def configs(*, max_positions: int = 3):
+    return (
+        ExecutionConfig(
+            signal_lag_bars=1,
+            fee_per_side=0.0005,
+            slippage_per_side=0.0002,
+        ),
+        SizingConfig(
+            initial_equity=1_000,
+            margin_fraction=0.1,
+            leverage=1,
+            max_positions=max_positions,
+        ),
+    )
+
+
+def test_enters_at_next_open_with_adverse_long_entry_and_exit_slippage():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 90, 91, 89, 90),
+        candle("BTC", 1, 100, 111, 99, 108),
+    ]
+
+    trades = run_backtest(
+        candles,
+        [signal("BTC", 0, "long", stop=95, take_profit=110)],
+        [],
+        execution,
+        sizing,
+    )
+
+    assert len(trades) == 1
+    trade = trades[0]
+    assert isinstance(trade, Trade)
+    assert trade.entry_time == ts(1)
+    assert trade.entry_price == pytest.approx(100 * 1.0002)
+    assert trade.exit_price == pytest.approx(110 * 0.9998)
+
+
+def test_short_entry_and_exit_slippage_are_adverse():
+    execution, sizing = configs()
+    candles = [
+        candle("ETH", 0, 110, 111, 109, 110),
+        candle("ETH", 1, 100, 101, 89, 92),
+    ]
+
+    trade = run_backtest(
+        candles,
+        [signal("ETH", 0, "short", stop=105, take_profit=90)],
+        [],
+        execution,
+        sizing,
+    )[0]
+
+    assert trade.entry_price == pytest.approx(100 * 0.9998)
+    assert trade.exit_price == pytest.approx(90 * 1.0002)
+
+
+def test_charges_fees_on_both_filled_sides():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 110, 90, 100),
+    ]
+
+    trade = run_backtest(
+        candles,
+        [signal("BTC", 0, "long", stop=100, take_profit=200)],
+        [],
+        execution,
+        sizing,
+    )[0]
+
+    assert trade.entry_fee == pytest.approx(trade.quantity * trade.entry_price * 0.0005)
+    assert trade.exit_fee == pytest.approx(trade.quantity * trade.exit_price * 0.0005)
+    assert trade.fees == pytest.approx(trade.entry_fee + trade.exit_fee)
+    assert trade.net_pnl == pytest.approx(trade.gross_pnl - trade.fees + trade.funding_pnl)
+
+
+@pytest.mark.parametrize(
+    ("side", "expected_sign"),
+    [("long", -1), ("short", 1)],
+)
+def test_positive_funding_is_paid_by_longs_and_received_by_shorts(side, expected_sign):
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 110, 90, 100),
+    ]
+    stop = 95 if side == "long" else 200
+    take_profit = 200 if side == "long" else 95
+
+    trade = run_backtest(
+        candles,
+        [signal("BTC", 0, side, stop=stop, take_profit=take_profit)],
+        [{"symbol": "BTC", "timestamp": ts(2), "rate": 0.01}],
+        execution,
+        sizing,
+    )[0]
+
+    assert trade.funding_pnl * expected_sign > 0
+    assert abs(trade.funding_pnl) == pytest.approx(
+        trade.quantity * candles[2]["open"] * 0.01
+    )
+
+
+def test_funding_at_entry_timestamp_is_not_applied_but_later_boundary_is():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 110, 90, 100),
+    ]
+
+    trade = run_backtest(
+        candles,
+        [signal("BTC", 0, "long", stop=95, take_profit=200)],
+        [
+            {"symbol": "BTC", "timestamp": ts(1), "rate": 0.02},
+            {"symbol": "BTC", "timestamp": ts(2), "rate": 0.01},
+        ],
+        execution,
+        sizing,
+    )[0]
+
+    assert trade.funding_pnl == pytest.approx(
+        -(trade.quantity * candles[2]["open"] * 0.01)
+    )
+
+
+@pytest.mark.parametrize(
+    ("side", "stop", "take_profit"),
+    [("long", 95, 105), ("short", 105, 95)],
+)
+def test_same_candle_stop_and_take_profit_uses_stop(side, stop, take_profit):
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 106, 94, 100),
+    ]
+
+    trade = run_backtest(
+        candles,
+        [signal("BTC", 0, side, stop=stop, take_profit=take_profit)],
+        [],
+        execution,
+        sizing,
+    )[0]
+
+    expected = stop * (0.9998 if side == "long" else 1.0002)
+    assert trade.exit_reason == "stop"
+    assert trade.exit_price == pytest.approx(expected)
+
+
+def test_rejects_entries_beyond_concurrent_position_limit():
+    execution, sizing = configs(max_positions=2)
+    candles = []
+    signals = []
+    for symbol in ("BTC", "ETH", "SOL"):
+        candles.extend(
+            [
+                candle(symbol, 0, 100, 100, 100, 100),
+                candle(symbol, 1, 100, 101, 99, 100),
+                candle(symbol, 2, 100, 110, 90, 100),
+            ]
+        )
+        signals.append(signal(symbol, 0, "long", stop=100, take_profit=200))
+
+    trades = run_backtest(candles, signals, [], execution, sizing)
+
+    assert len(trades) == 2
+    assert {trade.symbol for trade in trades} == {"BTC", "ETH"}
