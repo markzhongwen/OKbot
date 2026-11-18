@@ -7,6 +7,7 @@ ud/**/*.csv
 **/__pycache__/
 *.pyc
 reports/*.html
+!reports/cost_aware_results.html
 reports/*.log
 intraday/*.jsonl
 intraday/SEARCH_*.md

@@ -414,10 +414,56 @@ def passes_research_gates(
     return (
         usable_folds == 3
         and positive_folds > usable_folds / 2
+        and metrics.total_return > 0.0
         and metrics.trades >= 30
         and metrics.max_drawdown >= -0.30
         and robustness >= 0.70
     )
+
+
+def combine_window_results(
+    outputs: Sequence[BacktestOutput],
+    windows: Sequence[tuple[object, object]],
+) -> tuple[pd.Series, list[object], tuple[float, ...]]:
+    """Validate and chain independently flat-started contiguous windows."""
+    ordered_outputs = tuple(outputs)
+    ordered_windows = tuple(windows)
+    if not ordered_outputs:
+        raise ValueError("outputs cannot be empty")
+    if len(ordered_outputs) != len(ordered_windows):
+        raise ValueError("outputs and windows must have the same length")
+
+    normalized_windows: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    for index, (raw_start, raw_end) in enumerate(ordered_windows):
+        start = pd.Timestamp(raw_start)
+        end = pd.Timestamp(raw_end)
+        if start.tz is None or end.tz is None:
+            raise ValueError("window boundaries must be timezone-aware")
+        if start >= end:
+            raise ValueError("each window start must precede its end")
+        if normalized_windows and normalized_windows[-1][1] != start:
+            raise ValueError("windows must be contiguous")
+        normalized_windows.append((start, end))
+
+    equities: list[pd.Series] = []
+    trades: list[object] = []
+    window_returns: list[float] = []
+    for index, (output, (start, end)) in enumerate(
+        zip(ordered_outputs, normalized_windows, strict=True)
+    ):
+        resolved = _resolve_window_output(
+            output,
+            start,
+            end,
+            label=f"window {index}",
+        )
+        if resolved is None:
+            raise ValueError(f"window {index} output cannot be None")
+        equity, window_trades = resolved
+        equities.append(equity)
+        trades.extend(window_trades)
+        window_returns.append(float(equity.iloc[-1] / equity.iloc[0] - 1.0))
+    return _chain_equity(equities), trades, tuple(window_returns)
 
 
 def _coerce_equity(equity: pd.Series) -> pd.Series:
@@ -592,6 +638,21 @@ def _resolve_output(
     fold: Fold,
     phase: Phase,
 ) -> tuple[pd.Series, list[object]] | None:
+    start, end = (
+        (fold.is_start, fold.is_end)
+        if phase == "is"
+        else (fold.oos_start, fold.oos_end)
+    )
+    return _resolve_window_output(output, start, end, label=phase)
+
+
+def _resolve_window_output(
+    output: BacktestOutput | None,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    *,
+    label: str,
+) -> tuple[pd.Series, list[object]] | None:
     if output is None:
         return None
     if hasattr(output, "equity_events") and hasattr(output, "trades"):
@@ -604,15 +665,10 @@ def _resolve_output(
             "callback must return BacktestResult, (event_equity, trades), or None"
         )
     resolved_equity = _coerce_equity(equity)
-    start, end = (
-        (fold.is_start, fold.is_end)
-        if phase == "is"
-        else (fold.oos_start, fold.oos_end)
-    )
     timestamps = _equity_timestamps(resolved_equity)
     if timestamps[0] != start or timestamps[-1] != end:
         raise ValueError(
-            f"{phase} equity must cover both fold window boundaries"
+            f"{label} equity must cover both window boundaries"
         )
     resolved_trades = list(trades)
     _validate_trades(resolved_trades, start, end)

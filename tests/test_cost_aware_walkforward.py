@@ -11,6 +11,7 @@ from cost_aware.walkforward import (
     Fold,
     Metrics,
     build_folds,
+    combine_window_results,
     compute_metrics,
     evaluate_candidate,
     passes_research_gates,
@@ -588,3 +589,56 @@ def test_research_gate_boundaries_and_strict_majority():
         replace(metrics, fold_returns=(0.01, 0.02)),
         neighbor_robustness=0.70,
     )
+    assert not passes_research_gates(
+        replace(metrics, total_return=0.0),
+        neighbor_robustness=0.70,
+    )
+    assert not passes_research_gates(
+        replace(metrics, total_return=-0.01),
+        neighbor_robustness=0.70,
+    )
+
+
+def test_combine_window_results_reuses_boundary_and_trade_validation():
+    start = pd.Timestamp("2026-01-01", tz="UTC")
+    midpoint = start + pd.Timedelta(days=1)
+    end = start + pd.Timedelta(days=2)
+    outputs = [
+        BacktestResult(
+            trades=tuple(_window_trades(1, start, midpoint, exit_at_end=True)),
+            equity_events=(
+                EquityEvent(start, 0, 100.0, 100.0, "window_start"),
+                EquityEvent(midpoint, 1, 110.0, 110.0, "window_end"),
+            ),
+        ),
+        BacktestResult(
+            trades=tuple(_window_trades(1, midpoint, end, exit_at_end=True)),
+            equity_events=(
+                EquityEvent(midpoint, 0, 100.0, 100.0, "window_start"),
+                EquityEvent(end, 1, 90.0, 90.0, "window_end"),
+            ),
+        ),
+    ]
+
+    equity, trades, fold_returns = combine_window_results(
+        outputs,
+        ((start, midpoint), (midpoint, end)),
+    )
+
+    assert equity.iloc[-1] == pytest.approx(0.99)
+    assert len(trades) == 2
+    assert fold_returns == pytest.approx((0.10, -0.10))
+
+    valid_trade = _window_trades(1, start, midpoint)[0]
+    invalid_trade = SimpleNamespace(
+        **{
+            **vars(valid_trade),
+            "entry_time": start - pd.Timedelta(hours=1),
+        }
+    )
+    invalid = BacktestResult(
+        trades=(invalid_trade,),
+        equity_events=outputs[0].equity_events,
+    )
+    with pytest.raises(ValueError, match="entry_time"):
+        combine_window_results([invalid], [(start, midpoint)])

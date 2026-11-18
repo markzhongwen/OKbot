@@ -20,6 +20,7 @@ _METRIC_FIELDS = (
 )
 _CANDIDATE_FIELDS = (
     "rank",
+    "pass_rank",
     "strategy",
     "family",
     "timeframe",
@@ -31,6 +32,7 @@ _CANDIDATE_FIELDS = (
     "cost_off",
     "reference",
     "calendar_returns",
+    "start_sensitivity",
 )
 
 
@@ -99,6 +101,13 @@ def _validate_calendar_returns(value: object, path: str) -> None:
         _finite(returns[window], f"{path}.{window}")
 
 
+def _validate_calibration_returns(value: object, path: str) -> None:
+    returns = _require_mapping(value, path)
+    _require_fields(returns, ("7d", "30d", "56d"), path)
+    for window in ("7d", "30d", "56d"):
+        _finite(returns[window], f"{path}.{window}")
+
+
 def validate_summary(summary: Mapping[str, object]) -> None:
     """Reject incomplete or internally inconsistent machine summaries."""
     root = _require_mapping(summary, "summary")
@@ -128,6 +137,7 @@ def validate_summary(summary: Mapping[str, object]) -> None:
             "universe",
             "timeframes",
             "coverage",
+            "source_gaps",
         ),
         "data",
     )
@@ -141,18 +151,95 @@ def validate_summary(summary: Mapping[str, object]) -> None:
             "folds",
             "calendar_window_end",
             "calendar_window_definition",
+            "calendar_overlap_disclosure",
             "neighbor_rule",
             "passing_gates",
             "search_counts",
         ),
         "research",
     )
+    source_gaps = data["source_gaps"]
+    if not isinstance(source_gaps, list):
+        raise ValueError("data.source_gaps must be a list")
+    for index, raw_gap in enumerate(source_gaps):
+        gap_path = f"data.source_gaps[{index}]"
+        gap = _require_mapping(raw_gap, gap_path)
+        _require_fields(
+            gap,
+            ("instrument", "date", "timestamp", "missing_minutes"),
+            gap_path,
+        )
+        missing_minutes = _finite(
+            gap["missing_minutes"],
+            f"{gap_path}.missing_minutes",
+        )
+        if missing_minutes < 1 or not missing_minutes.is_integer():
+            raise ValueError(
+                f"{gap_path}.missing_minutes must be a positive integer"
+            )
+
+    overlap = _require_mapping(
+        research["calendar_overlap_disclosure"],
+        "research.calendar_overlap_disclosure",
+    )
+    _require_fields(
+        overlap,
+        (
+            "parameter_source",
+            "last_30d_latest_is_overlap_days",
+            "last_90d_latest_is_overlap_days",
+            "last_90d_includes_pre_latest_is_history",
+            "independent_oos",
+            "start_sensitive",
+            "sensitivity_window",
+        ),
+        "research.calendar_overlap_disclosure",
+    )
+    if (
+        int(overlap["last_30d_latest_is_overlap_days"]) != 14
+        or int(overlap["last_90d_latest_is_overlap_days"]) != 45
+        or overlap["last_90d_includes_pre_latest_is_history"] is not True
+        or overlap["independent_oos"] is not False
+        or overlap["start_sensitive"] is not True
+    ):
+        raise ValueError("research.calendar_overlap_disclosure is inconsistent")
 
     candidates = root["candidates"]
     if not isinstance(candidates, list):
         raise ValueError("candidates must be a list")
     passing = 0
     ranks: list[int] = []
+    passers: list[Mapping[str, object]] = []
+    gates = _require_mapping(research["passing_gates"], "research.passing_gates")
+    _require_fields(
+        gates,
+        (
+            "positive_oos_folds",
+            "minimum_total_oos_return_exclusive",
+            "minimum_oos_trades",
+            "maximum_drawdown_floor",
+            "minimum_neighbor_robustness",
+        ),
+        "research.passing_gates",
+    )
+    minimum_return = _finite(
+        gates["minimum_total_oos_return_exclusive"],
+        "research.passing_gates.minimum_total_oos_return_exclusive",
+    )
+    minimum_trades = int(
+        _finite(
+            gates["minimum_oos_trades"],
+            "research.passing_gates.minimum_oos_trades",
+        )
+    )
+    drawdown_floor = _finite(
+        gates["maximum_drawdown_floor"],
+        "research.passing_gates.maximum_drawdown_floor",
+    )
+    minimum_robustness = _finite(
+        gates["minimum_neighbor_robustness"],
+        "research.passing_gates.minimum_neighbor_robustness",
+    )
     for index, raw_candidate in enumerate(candidates):
         path = f"candidates[{index}]"
         candidate = _require_mapping(raw_candidate, path)
@@ -203,6 +290,60 @@ def validate_summary(summary: Mapping[str, object]) -> None:
         if abs(robustness - expected_robustness) > 1e-12:
             raise ValueError(f"{path}.neighbor robustness is inconsistent")
 
+        recomputed_pass = (
+            sum(_finite(value, f"{path}.oos.fold_returns") > 0 for value in fold_returns)
+            >= 2
+            and _finite(oos["return"], f"{path}.oos.return") > minimum_return
+            and int(_finite(oos["trades"], f"{path}.oos.trades"))
+            >= minimum_trades
+            and _finite(oos["max_drawdown"], f"{path}.oos.max_drawdown")
+            >= drawdown_floor
+            and robustness >= minimum_robustness
+        )
+        if candidate["passed"] is not recomputed_pass:
+            raise ValueError(
+                f"{path}.passed does not match recomputed gates"
+            )
+        sensitivity = candidate["start_sensitivity"]
+        if candidate["passed"]:
+            passers.append(candidate)
+            sensitivity_map = _require_mapping(
+                sensitivity,
+                f"{path}.start_sensitivity",
+            )
+            _require_fields(
+                sensitivity_map,
+                (
+                    "nominal_window",
+                    "start_shift_days",
+                    "actual_window",
+                    "primary_return",
+                    "reference_return",
+                ),
+                f"{path}.start_sensitivity",
+            )
+            if (
+                sensitivity_map["nominal_window"] != "30d"
+                or int(sensitivity_map["start_shift_days"]) != 7
+                or sensitivity_map["actual_window"] != "23d"
+            ):
+                raise ValueError(
+                    f"{path}.start_sensitivity actual_window must be "
+                    "a 23d window shifted +7d from 30d"
+                )
+            _finite(
+                sensitivity_map["primary_return"],
+                f"{path}.start_sensitivity.primary_return",
+            )
+            _finite(
+                sensitivity_map["reference_return"],
+                f"{path}.start_sensitivity.reference_return",
+            )
+        elif sensitivity is not None:
+            raise ValueError(
+                f"{path}.start_sensitivity must be null for non-passers"
+            )
+
         _validate_metrics(candidate["cost_off"], f"{path}.cost_off")
         _validate_calendar_returns(
             candidate["calendar_returns"],
@@ -218,6 +359,31 @@ def validate_summary(summary: Mapping[str, object]) -> None:
 
     if ranks != list(range(1, len(candidates) + 1)):
         raise ValueError("candidate ranks must be contiguous and ordered")
+    expected_passers = sorted(
+        passers,
+        key=lambda candidate: (
+            -float(_require_mapping(candidate["oos"], "candidate.oos")["sharpe"]),
+            -float(_require_mapping(candidate["oos"], "candidate.oos")["return"]),
+            str(candidate["strategy"]),
+            str(candidate["timeframe"]),
+        ),
+    )
+    expected_pass_ranks = {
+        id(candidate): rank
+        for rank, candidate in enumerate(expected_passers, start=1)
+    }
+    for index, candidate in enumerate(candidates):
+        pass_rank = candidate["pass_rank"]
+        if candidate["passed"]:
+            expected = expected_pass_ranks[id(candidate)]
+            if int(_finite(pass_rank, f"candidates[{index}].pass_rank")) != expected:
+                raise ValueError(
+                    f"candidates[{index}].pass_rank does not match passing order"
+                )
+        elif pass_rank is not None:
+            raise ValueError(
+                f"candidates[{index}].pass_rank must be null for non-passers"
+            )
     if int(root["passing_count"]) != passing:
         raise ValueError("passing_count does not match candidate pass flags")
     search_counts = _require_mapping(research["search_counts"], "research.search_counts")
@@ -232,6 +398,84 @@ def validate_summary(summary: Mapping[str, object]) -> None:
             "research.search_counts.family_timeframe_candidates "
             "does not match candidates"
         )
+    _require_fields(
+        search_counts,
+        (
+            "fresh_backtests",
+            "fresh_candidates",
+            "checkpoint_reused_candidates",
+        ),
+        "research.search_counts",
+    )
+    fresh_candidates = int(
+        _finite(
+            search_counts["fresh_candidates"],
+            "research.search_counts.fresh_candidates",
+        )
+    )
+    reused_candidates = int(
+        _finite(
+            search_counts["checkpoint_reused_candidates"],
+            "research.search_counts.checkpoint_reused_candidates",
+        )
+    )
+    if fresh_candidates < 0 or reused_candidates < 0:
+        raise ValueError("research.search_counts candidate counts cannot be negative")
+    if fresh_candidates + reused_candidates != len(candidates):
+        raise ValueError(
+            "fresh_candidates plus checkpoint_reused_candidates "
+            "does not match candidates"
+        )
+
+    calibration = _require_mapping(root["calibration"], "calibration")
+    if "direction" not in calibration:
+        raise ValueError("calibration.direction is required")
+    if "legacy_method" not in calibration:
+        raise ValueError("calibration.legacy_method is required")
+    _require_fields(
+        calibration,
+        (
+            "strategy",
+            "timeframe",
+            "direction",
+            "params",
+            "primary_returns",
+            "legacy_equal_weight_returns",
+            "legacy_method",
+            "user_reference_returns",
+        ),
+        "calibration",
+    )
+    if calibration["strategy"] != "donchian":
+        raise ValueError("calibration.strategy must be donchian")
+    if calibration["timeframe"] != "15m":
+        raise ValueError("calibration.timeframe must be 15m")
+    if calibration["direction"] != "both":
+        raise ValueError("calibration.direction must be both")
+    params = _require_mapping(calibration["params"], "calibration.params")
+    _require_fields(
+        params,
+        (
+            "lookback",
+            "atr_window",
+            "stop_atr",
+            "take_profit_atr",
+            "time_stop_bars",
+            "cooldown_bars",
+        ),
+        "calibration.params",
+    )
+    for field in (
+        "primary_returns",
+        "legacy_equal_weight_returns",
+        "user_reference_returns",
+    ):
+        _validate_calibration_returns(
+            calibration[field],
+            f"calibration.{field}",
+        )
+    if not str(calibration["legacy_method"]).strip():
+        raise ValueError("calibration.legacy_method cannot be empty")
 
 
 def _candidate_cells(candidate: Mapping[str, object]) -> list[str]:
@@ -247,8 +491,16 @@ def _candidate_cells(candidate: Mapping[str, object]) -> list[str]:
         candidate["calendar_returns"],
         "candidate.calendar_returns",
     )
+    sensitivity = candidate["start_sensitivity"]
+    if isinstance(sensitivity, Mapping):
+        primary_sensitivity = _percent(sensitivity["primary_return"])
+        reference_sensitivity = _percent(sensitivity["reference_return"])
+    else:
+        primary_sensitivity = "—"
+        reference_sensitivity = "—"
     return [
         _integer(candidate["rank"]),
+        _integer(candidate["pass_rank"]) if candidate["pass_rank"] is not None else "—",
         "PASS" if candidate["passed"] else "NO",
         str(candidate["strategy"]),
         str(candidate["family"]),
@@ -259,6 +511,7 @@ def _candidate_cells(candidate: Mapping[str, object]) -> list[str]:
         _percent(calendar["7d"]),
         _percent(calendar["30d"]),
         _percent(calendar["90d"]),
+        primary_sensitivity,
         _number(oos["sharpe"]),
         _percent(oos["max_drawdown"]),
         _integer(oos["trades"]),
@@ -268,6 +521,7 @@ def _candidate_cells(candidate: Mapping[str, object]) -> list[str]:
         _percent(reference_calendar["7d"]),
         _percent(reference_calendar["30d"]),
         _percent(reference_calendar["90d"]),
+        reference_sensitivity,
         _number(reference_oos["sharpe"]),
         _percent(reference_oos["max_drawdown"]),
         _integer(reference_oos["trades"]),
@@ -276,7 +530,8 @@ def _candidate_cells(candidate: Mapping[str, object]) -> list[str]:
 
 
 _CANDIDATE_HEADERS = (
-    "Rank",
+    "Overall rank",
+    "Pass rank",
     "Pass",
     "Strategy",
     "Family",
@@ -287,15 +542,17 @@ _CANDIDATE_HEADERS = (
     "Last 7d",
     "Last 30d",
     "Last 90d",
-    "Sharpe",
-    "Max drawdown",
-    "Trades",
-    "Win rate",
+    "23d (30d start +7d) return",
+    "OOS Sharpe",
+    "OOS Max drawdown",
+    "OOS Trades",
+    "OOS Win rate",
     "Cost-off return",
     "5% x 5x OOS return",
     "5% x 5x Last 7d",
     "5% x 5x Last 30d",
     "5% x 5x Last 90d",
+    "5% x 5x 23d (30d start +7d) return",
     "5% x 5x Sharpe",
     "5% x 5x Max drawdown",
     "5% x 5x Trades",
@@ -311,6 +568,15 @@ def render_markdown(summary: Mapping[str, object]) -> str:
     candidates = summary["candidates"]
     calibration = _require_mapping(summary["calibration"], "calibration")
     counts = _require_mapping(research["search_counts"], "search_counts")
+    overlap = _require_mapping(
+        research["calendar_overlap_disclosure"],
+        "calendar_overlap_disclosure",
+    )
+    passers = sorted(
+        (candidate for candidate in candidates if candidate["passed"]),
+        key=lambda candidate: int(candidate["pass_rank"]),
+    )
+    source_gaps = data["source_gaps"]
 
     lines = [
         "# Cost-aware OKX strategy research",
@@ -329,9 +595,22 @@ def render_markdown(summary: Mapping[str, object]) -> str:
                 "",
             ]
         )
+        for candidate in passers:
+            oos = _require_mapping(candidate["oos"], "candidate.oos")
+            lines.append(
+                f"- Pass rank {candidate['pass_rank']}: "
+                f"`{_markdown(candidate['strategy'])}` / "
+                f"`{_markdown(candidate['timeframe'])}` — "
+                f"OOS Sharpe {_number(oos['sharpe'])}, "
+                f"OOS return {_percent(oos['return'])}."
+            )
+        lines.append("")
     lines.extend(
         [
-            "All family/timeframe candidates remain listed below, including failures.",
+            (
+                "All family/timeframe candidates remain listed below, including "
+                "failures; overall rank does not imply passing status."
+            ),
             "",
             "## Data and execution contract",
             "",
@@ -340,6 +619,10 @@ def render_markdown(summary: Mapping[str, object]) -> str:
             f"- Requested complete-calendar coverage: `{data['requested_start']}` through `{data['requested_end']}`.",
             f"- Universe ({len(data['universe'])}): {_markdown(', '.join(data['universe']))}.",
             f"- Coverage: {_markdown(data['coverage'])}.",
+            (
+                f"- Source minute gaps: {len(source_gaps)} instrument/date "
+                "record(s); every row below states the exact missing minute count."
+            ),
             f"- Timeframes: {_markdown(', '.join(data['timeframes']))}.",
             f"- Cost model: `{_markdown(_json(research['cost_model']))}`.",
             f"- Primary sizing: `{_markdown(_json(research['primary_sizing']))}`.",
@@ -348,7 +631,29 @@ def render_markdown(summary: Mapping[str, object]) -> str:
                 f"- Calendar return windows end at `{research['calendar_window_end']}`: "
                 f"{_markdown(research['calendar_window_definition'])}."
             ),
+            (
+                "- Calendar-window warning: Last 30d and Last 90d use the "
+                f"{_markdown(overlap['parameter_source'])}. Last 30d overlaps "
+                f"the latest-fold IS by {overlap['last_30d_latest_is_overlap_days']} "
+                "days; Last 90d overlaps it by "
+                f"{overlap['last_90d_latest_is_overlap_days']} days and includes "
+                "history before the latest-fold IS. These returns are not "
+                "independent OOS and are start-date sensitive. Passers therefore "
+                "also show a genuine 23d window (30d start shifted +7d)."
+            ),
             "- Signals use the preceding fully closed bar and enter at the next open; each independent window starts flat.",
+            "",
+            "| Instrument with source gap | UTC date | Missing UTC timestamp | Missing minutes |",
+            "| --- | --- | --- | ---: |",
+        ]
+    )
+    for gap in source_gaps:
+        lines.append(
+            f"| {_markdown(gap['instrument'])} | {_markdown(gap['date'])} | "
+            f"{_markdown(gap['timestamp'])} | {_integer(gap['missing_minutes'])} |"
+        )
+    lines.extend(
+        [
             "",
             "## Walk-forward folds",
             "",
@@ -372,6 +677,11 @@ def render_markdown(summary: Mapping[str, object]) -> str:
                 f"{counts['timeframes']} timeframes; "
                 f"{counts['grid_configurations']} complete grid configurations "
                 f"and {counts['is_fold_evaluations']} IS fold evaluations."
+            ),
+            (
+                f"Fresh work: {counts['fresh_candidates']} candidate(s), "
+                f"{counts['fresh_backtests']} backtest(s); checkpoint reused: "
+                f"{counts['checkpoint_reused_candidates']} candidate(s)."
             ),
             "",
             f"Neighbor rule: {_markdown(research['neighbor_rule'])}.",
@@ -458,10 +768,38 @@ def render_html(summary: Mapping[str, object]) -> str:
     research = _require_mapping(summary["research"], "research")
     calibration = _require_mapping(summary["calibration"], "calibration")
     counts = _require_mapping(research["search_counts"], "search_counts")
+    overlap = _require_mapping(
+        research["calendar_overlap_disclosure"],
+        "calendar_overlap_disclosure",
+    )
     outcome = (
         NO_PASS_STATEMENT
         if int(summary["passing_count"]) == 0
         else f"{summary['passing_count']} configuration(s) passed all research gates."
+    )
+    passers = sorted(
+        (
+            candidate
+            for candidate in summary["candidates"]
+            if candidate["passed"]
+        ),
+        key=lambda candidate: int(candidate["pass_rank"]),
+    )
+    passer_items = "".join(
+        "<li>Pass rank {rank}: <code>{strategy}</code> / "
+        "<code>{timeframe}</code> — OOS Sharpe {sharpe}, "
+        "OOS return {total_return}.</li>".format(
+            rank=escape(str(candidate["pass_rank"])),
+            strategy=escape(str(candidate["strategy"])),
+            timeframe=escape(str(candidate["timeframe"])),
+            sharpe=escape(
+                _number(_require_mapping(candidate["oos"], "candidate.oos")["sharpe"])
+            ),
+            total_return=escape(
+                _percent(_require_mapping(candidate["oos"], "candidate.oos")["return"])
+            ),
+        )
+        for candidate in passers
     )
     fold_rows = [
         [
@@ -474,6 +812,15 @@ def render_html(summary: Mapping[str, object]) -> str:
         for fold in research["folds"]
     ]
     candidate_rows = [_candidate_cells(candidate) for candidate in summary["candidates"]]
+    gap_rows = [
+        [
+            str(gap["instrument"]),
+            str(gap["date"]),
+            str(gap["timestamp"]),
+            _integer(gap["missing_minutes"]),
+        ]
+        for gap in data["source_gaps"]
+    ]
     primary = _require_mapping(calibration["primary_returns"], "calibration.primary")
     reference = _require_mapping(
         calibration["user_reference_returns"],
@@ -528,8 +875,12 @@ def render_html(summary: Mapping[str, object]) -> str:
         "<h1>Cost-aware OKX strategy research</h1>"
         f"<p>Generated: <code>{escape(str(summary['generated_at']))}</code></p>"
         f'<section class="card"><h2>Outcome</h2><p class="outcome">{escape(outcome)}</p>'
-        "<p>All family/timeframe candidates remain listed below, including failures.</p></section>"
-        '<section class="card"><h2>Data and execution contract</h2>'
+        + (f"<ul>{passer_items}</ul>" if passer_items else "")
+        + (
+            "<p>All family/timeframe candidates remain listed below, including "
+            "failures; overall rank does not imply passing status.</p></section>"
+        )
+        + '<section class="card"><h2>Data and execution contract</h2>'
         f"<p>Data snapshot generated: <code>{escape(str(data['metadata_generated_at']))}</code>. "
         f"Source: {escape(str(data['source']))}.</p>"
         f"<p>Requested complete-calendar coverage: <code>{escape(str(data['requested_start']))}</code> "
@@ -537,11 +888,31 @@ def render_html(summary: Mapping[str, object]) -> str:
         f"<p>Universe ({len(data['universe'])}): {escape(universe)}.</p>"
         f"<p>Coverage: {escape(str(data['coverage']))}. "
         f"Timeframes: {escape(', '.join(data['timeframes']))}.</p>"
-        f"<p>Cost model:</p><pre>{escape(_json(research['cost_model']))}</pre>"
+        f"<p>Source minute gaps: {len(gap_rows)} instrument/date record(s); "
+        "every row states the exact missing minute count.</p>"
+        + _html_table(
+            (
+                "Instrument with source gap",
+                "UTC date",
+                "Missing UTC timestamp",
+                "Missing minutes",
+            ),
+            gap_rows,
+        )
+        + f"<p>Cost model:</p><pre>{escape(_json(research['cost_model']))}</pre>"
         f"<p>Primary sizing:</p><pre>{escape(_json(research['primary_sizing']))}</pre>"
         f"<p>5% x 5x reference sizing:</p><pre>{escape(_json(research['reference_sizing']))}</pre>"
         f"<p>Calendar return windows end at <code>{escape(str(research['calendar_window_end']))}</code>: "
         f"{escape(str(research['calendar_window_definition']))}.</p>"
+        "<p><strong>Calendar-window warning:</strong> Last 30d and Last 90d "
+        f"use the {escape(str(overlap['parameter_source']))}. Last 30d overlaps "
+        "the latest-fold IS by "
+        f"{escape(str(overlap['last_30d_latest_is_overlap_days']))} days; "
+        "Last 90d overlaps it by "
+        f"{escape(str(overlap['last_90d_latest_is_overlap_days']))} days and "
+        "includes history before the latest-fold IS. These returns are not "
+        "independent OOS and are start-date sensitive. Passers therefore also "
+        "show a genuine 23d window (30d start shifted +7d).</p>"
         "<p>Signals use the preceding fully closed bar and enter at the next open; "
         "each independent window starts flat.</p></section>"
         '<section class="card"><h2>Walk-forward folds</h2>'
@@ -555,6 +926,9 @@ def render_html(summary: Mapping[str, object]) -> str:
         f"{escape(str(counts['timeframes']))} timeframes; "
         f"{escape(str(counts['grid_configurations']))} complete grid configurations "
         f"and {escape(str(counts['is_fold_evaluations']))} IS fold evaluations.</p>"
+        f"<p>Fresh work: {escape(str(counts['fresh_candidates']))} candidate(s), "
+        f"{escape(str(counts['fresh_backtests']))} backtest(s); checkpoint reused: "
+        f"{escape(str(counts['checkpoint_reused_candidates']))} candidate(s).</p>"
         f"<p>Neighbor rule: {escape(str(research['neighbor_rule']))}.</p>"
         f"<p>Passing gates:</p><pre>{escape(_json(research['passing_gates']))}</pre>"
         + _html_table(_CANDIDATE_HEADERS, candidate_rows)

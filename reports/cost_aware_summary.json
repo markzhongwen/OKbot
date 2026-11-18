@@ -107,6 +107,7 @@
         "trades": 53,
         "win_rate": 0.4528301886792453
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 1,
       "reference": {
@@ -123,6 +124,7 @@
           "win_rate": 0.4528301886792453
         }
       },
+      "start_sensitivity": null,
       "strategy": "cross_sectional_momentum",
       "timeframe": "4h"
     },
@@ -216,6 +218,7 @@
         "trades": 93,
         "win_rate": 0.5053763440860215
       },
+      "pass_rank": 1,
       "passed": true,
       "rank": 2,
       "reference": {
@@ -231,6 +234,13 @@
           "trades": 93,
           "win_rate": 0.5053763440860215
         }
+      },
+      "start_sensitivity": {
+        "actual_window": "23d",
+        "nominal_window": "30d",
+        "primary_return": 0.370101861187041,
+        "reference_return": 0.11252124759731852,
+        "start_shift_days": 7
       },
       "strategy": "extreme_reversal",
       "timeframe": "3m"
@@ -325,6 +335,7 @@
         "trades": 45,
         "win_rate": 0.5111111111111111
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 3,
       "reference": {
@@ -341,6 +352,7 @@
           "win_rate": 0.5111111111111111
         }
       },
+      "start_sensitivity": null,
       "strategy": "extreme_reversal",
       "timeframe": "4h"
     },
@@ -422,6 +434,7 @@
         "trades": 169,
         "win_rate": 0.46745562130177515
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 4,
       "reference": {
@@ -438,6 +451,7 @@
           "win_rate": 0.46745562130177515
         }
       },
+      "start_sensitivity": null,
       "strategy": "cross_sectional_momentum",
       "timeframe": "1h"
     },
@@ -515,6 +529,7 @@
         "trades": 55,
         "win_rate": 0.5272727272727272
       },
+      "pass_rank": 2,
       "passed": true,
       "rank": 5,
       "reference": {
@@ -530,6 +545,13 @@
           "trades": 55,
           "win_rate": 0.5272727272727272
         }
+      },
+      "start_sensitivity": {
+        "actual_window": "23d",
+        "nominal_window": "30d",
+        "primary_return": 1.418314462739687,
+        "reference_return": 0.35657319112071684,
+        "start_shift_days": 7
       },
       "strategy": "donchian",
       "timeframe": "4h"
@@ -612,6 +634,7 @@
         "trades": 832,
         "win_rate": 0.4074519230769231
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 6,
       "reference": {
@@ -628,6 +651,7 @@
           "win_rate": 0.4074519230769231
         }
       },
+      "start_sensitivity": null,
       "strategy": "cross_sectional_momentum",
       "timeframe": "15m"
     },
@@ -709,6 +733,7 @@
         "trades": 83,
         "win_rate": 0.4578313253012048
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 7,
       "reference": {
@@ -725,6 +750,7 @@
           "win_rate": 0.4578313253012048
         }
       },
+      "start_sensitivity": null,
       "strategy": "vwap_mean_reversion",
       "timeframe": "4h"
     },
@@ -806,6 +832,7 @@
         "trades": 74,
         "win_rate": 0.47297297297297297
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 8,
       "reference": {
@@ -822,6 +849,7 @@
           "win_rate": 0.47297297297297297
         }
       },
+      "start_sensitivity": null,
       "strategy": "rsi_mean_reversion",
       "timeframe": "4h"
     },
@@ -915,6 +943,7 @@
         "trades": 100,
         "win_rate": 0.47
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 9,
       "reference": {
@@ -931,6 +960,7 @@
           "win_rate": 0.47
         }
       },
+      "start_sensitivity": null,
       "strategy": "extreme_reversal",
       "timeframe": "1h"
     },
@@ -1016,6 +1046,7 @@
         "trades": 51,
         "win_rate": 0.47058823529411764
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 10,
       "reference": {
@@ -1032,6 +1063,7 @@
           "win_rate": 0.47058823529411764
         }
       },
+      "start_sensitivity": null,
       "strategy": "regime_gated",
       "timeframe": "4h"
     },
@@ -1113,6 +1145,7 @@
         "trades": 71,
         "win_rate": 0.38028169014084506
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 11,
       "reference": {
@@ -1129,6 +1162,7 @@
           "win_rate": 0.38028169014084506
         }
       },
+      "start_sensitivity": null,
       "strategy": "keltner",
       "timeframe": "4h"
     },
@@ -1214,6 +1248,7 @@
         "trades": 179,
         "win_rate": 0.45251396648044695
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 12,
       "reference": {
@@ -1230,6 +1265,7 @@
           "win_rate": 0.45251396648044695
         }
       },
+      "start_sensitivity": null,
       "strategy": "regime_gated",
       "timeframe": "1h"
     },
@@ -1315,6 +1351,7 @@
         "trades": 706,
         "win_rate": 0.43626062322946174
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 13,
       "reference": {
@@ -1331,6 +1368,7 @@
           "win_rate": 0.43626062322946174
         }
       },
+      "start_sensitivity": null,
       "strategy": "regime_gated",
       "timeframe": "15m"
     },
@@ -1412,6 +1450,7 @@
         "trades": 218,
         "win_rate": 0.518348623853211
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 14,
       "reference": {
@@ -1428,6 +1467,7 @@
           "win_rate": 0.518348623853211
         }
       },
+      "start_sensitivity": null,
       "strategy": "vwap_mean_reversion",
       "timeframe": "1h"
     },
@@ -1509,6 +1549,7 @@
         "trades": 189,
         "win_rate": 0.43386243386243384
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 15,
       "reference": {
@@ -1525,6 +1566,7 @@
           "win_rate": 0.43386243386243384
         }
       },
+      "start_sensitivity": null,
       "strategy": "keltner",
       "timeframe": "1h"
     },
@@ -1606,6 +1648,7 @@
         "trades": 778,
         "win_rate": 0.44087403598971725
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 16,
       "reference": {
@@ -1622,6 +1665,7 @@
           "win_rate": 0.44087403598971725
         }
       },
+      "start_sensitivity": null,
       "strategy": "keltner",
       "timeframe": "15m"
     },
@@ -1699,6 +1743,7 @@
         "trades": 235,
         "win_rate": 0.4127659574468085
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 17,
       "reference": {
@@ -1715,6 +1760,7 @@
           "win_rate": 0.4127659574468085
         }
       },
+      "start_sensitivity": null,
       "strategy": "donchian",
       "timeframe": "1h"
     },
@@ -1792,6 +1838,7 @@
         "trades": 761,
         "win_rate": 0.46254927726675427
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 18,
       "reference": {
@@ -1808,6 +1855,7 @@
           "win_rate": 0.46254927726675427
         }
       },
+      "start_sensitivity": null,
       "strategy": "donchian",
       "timeframe": "15m"
     },
@@ -1889,6 +1937,7 @@
         "trades": 272,
         "win_rate": 0.4117647058823529
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 19,
       "reference": {
@@ -1905,6 +1954,7 @@
           "win_rate": 0.4117647058823529
         }
       },
+      "start_sensitivity": null,
       "strategy": "rsi_mean_reversion",
       "timeframe": "1h"
     },
@@ -1998,6 +2048,7 @@
         "trades": 181,
         "win_rate": 0.4143646408839779
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 20,
       "reference": {
@@ -2014,6 +2065,7 @@
           "win_rate": 0.4143646408839779
         }
       },
+      "start_sensitivity": null,
       "strategy": "extreme_reversal",
       "timeframe": "15m"
     },
@@ -2095,6 +2147,7 @@
         "trades": 928,
         "win_rate": 0.42780172413793105
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 21,
       "reference": {
@@ -2111,6 +2164,7 @@
           "win_rate": 0.42780172413793105
         }
       },
+      "start_sensitivity": null,
       "strategy": "rsi_mean_reversion",
       "timeframe": "15m"
     },
@@ -2192,6 +2246,7 @@
         "trades": 1001,
         "win_rate": 0.39760239760239763
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 22,
       "reference": {
@@ -2208,6 +2263,7 @@
           "win_rate": 0.39760239760239763
         }
       },
+      "start_sensitivity": null,
       "strategy": "vwap_mean_reversion",
       "timeframe": "15m"
     },
@@ -2289,6 +2345,7 @@
         "trades": 3206,
         "win_rate": 0.4488459139114161
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 23,
       "reference": {
@@ -2305,6 +2362,7 @@
           "win_rate": 0.4488459139114161
         }
       },
+      "start_sensitivity": null,
       "strategy": "cross_sectional_momentum",
       "timeframe": "3m"
     },
@@ -2386,6 +2444,7 @@
         "trades": 4134,
         "win_rate": 0.3514755684567005
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 24,
       "reference": {
@@ -2402,6 +2461,7 @@
           "win_rate": 0.3514755684567005
         }
       },
+      "start_sensitivity": null,
       "strategy": "keltner",
       "timeframe": "3m"
     },
@@ -2483,6 +2543,7 @@
         "trades": 4721,
         "win_rate": 0.3687778013132811
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 25,
       "reference": {
@@ -2499,6 +2560,7 @@
           "win_rate": 0.3687778013132811
         }
       },
+      "start_sensitivity": null,
       "strategy": "vwap_mean_reversion",
       "timeframe": "3m"
     },
@@ -2576,6 +2638,7 @@
         "trades": 3705,
         "win_rate": 0.36140350877192984
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 26,
       "reference": {
@@ -2592,6 +2655,7 @@
           "win_rate": 0.36140350877192984
         }
       },
+      "start_sensitivity": null,
       "strategy": "donchian",
       "timeframe": "3m"
     },
@@ -2677,6 +2741,7 @@
         "trades": 3739,
         "win_rate": 0.3738967638405991
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 27,
       "reference": {
@@ -2693,6 +2758,7 @@
           "win_rate": 0.3738967638405991
         }
       },
+      "start_sensitivity": null,
       "strategy": "regime_gated",
       "timeframe": "3m"
     },
@@ -2774,6 +2840,7 @@
         "trades": 4475,
         "win_rate": 0.3937430167597765
       },
+      "pass_rank": null,
       "passed": false,
       "rank": 28,
       "reference": {
@@ -2790,6 +2857,7 @@
           "win_rate": 0.3937430167597765
         }
       },
+      "start_sensitivity": null,
       "strategy": "rsi_mean_reversion",
       "timeframe": "3m"
     }
@@ -2800,6 +2868,71 @@
     "requested_end": "2026-11-16",
     "requested_start": "2026-08-18",
     "source": "OKX public tickers, instruments, daily archives, and funding API",
+    "source_gaps": [
+      {
+        "date": "2026-09-01",
+        "instrument": "BREV-USDT-SWAP",
+        "missing_minutes": 1,
+        "timestamp": "2026-09-01T10:33:00+00:00",
+        "timestamps": [
+          "2026-09-01T10:33:00+00:00"
+        ]
+      },
+      {
+        "date": "2026-09-01",
+        "instrument": "DOGE-USDT-SWAP",
+        "missing_minutes": 1,
+        "timestamp": "2026-09-01T10:58:00+00:00",
+        "timestamps": [
+          "2026-09-01T10:58:00+00:00"
+        ]
+      },
+      {
+        "date": "2026-09-01",
+        "instrument": "KORU-USDT-SWAP",
+        "missing_minutes": 1,
+        "timestamp": "2026-09-01T10:58:00+00:00",
+        "timestamps": [
+          "2026-09-01T10:58:00+00:00"
+        ]
+      },
+      {
+        "date": "2026-09-01",
+        "instrument": "SKHYNIX-USDT-SWAP",
+        "missing_minutes": 1,
+        "timestamp": "2026-09-01T10:33:00+00:00",
+        "timestamps": [
+          "2026-09-01T10:33:00+00:00"
+        ]
+      },
+      {
+        "date": "2026-09-01",
+        "instrument": "SOL-USDT-SWAP",
+        "missing_minutes": 1,
+        "timestamp": "2026-09-01T10:33:00+00:00",
+        "timestamps": [
+          "2026-09-01T10:33:00+00:00"
+        ]
+      },
+      {
+        "date": "2026-09-01",
+        "instrument": "SPCX-USDT-SWAP",
+        "missing_minutes": 1,
+        "timestamp": "2026-09-01T10:48:00+00:00",
+        "timestamps": [
+          "2026-09-01T10:48:00+00:00"
+        ]
+      },
+      {
+        "date": "2026-09-01",
+        "instrument": "ZEC-USDT-SWAP",
+        "missing_minutes": 1,
+        "timestamp": "2026-09-01T11:14:00+00:00",
+        "timestamps": [
+          "2026-09-01T11:14:00+00:00"
+        ]
+      }
+    ],
     "timeframes": [
       "3m",
       "15m",
@@ -2829,9 +2962,18 @@
       "SOL-USDT-SWAP"
     ]
   },
-  "generated_at": "2026-11-18T14:35:21.251729+00:00",
+  "generated_at": "2026-11-18T15:18:46.045439+00:00",
   "passing_count": 2,
   "research": {
+    "calendar_overlap_disclosure": {
+      "independent_oos": false,
+      "last_30d_latest_is_overlap_days": 14,
+      "last_90d_includes_pre_latest_is_history": true,
+      "last_90d_latest_is_overlap_days": 45,
+      "parameter_source": "latest fold exact params",
+      "sensitivity_window": "23d (30d start shifted +7d)",
+      "start_sensitive": true
+    },
     "calendar_window_definition": "last complete UTC calendar days; latest fold exact params; continuous cached history for indicators; flat at window start",
     "calendar_window_end": "2026-11-17T00:00:00+00:00",
     "checkpoint": "data/okx_cost_aware/research_checkpoint.json",
@@ -2842,7 +2984,7 @@
       "signal_lag_bars": 1,
       "slippage_per_side": 0.0002
     },
-    "elapsed_seconds": 955.431817,
+    "elapsed_seconds": 982.196962,
     "folds": [
       {
         "fold": 0,
@@ -2871,6 +3013,7 @@
       "maximum_drawdown_floor": -0.3,
       "minimum_neighbor_robustness": 0.7,
       "minimum_oos_trades": 30,
+      "minimum_total_oos_return_exclusive": 0.0,
       "positive_oos_folds": "strict majority: at least 2 of exactly 3"
     },
     "primary_sizing": {
@@ -2879,7 +3022,7 @@
       "margin_fraction": 0.1,
       "max_positions": 3
     },
-    "ranking": "OOS daily Sharpe descending, then OOS return descending",
+    "ranking": "overall and passing lists each use OOS daily Sharpe descending, then OOS return descending; overall rank does not imply passing status",
     "reference_sizing": {
       "initial_equity": 100000.0,
       "leverage": 5.0,
@@ -2887,9 +3030,12 @@
       "max_positions": 3
     },
     "search_counts": {
-      "actual_backtests": 1398,
+      "actual_backtests": 1402,
       "backtest_cache_hits": 0,
+      "checkpoint_reused_candidates": 0,
       "family_timeframe_candidates": 28,
+      "fresh_backtests": 1402,
+      "fresh_candidates": 28,
       "grid_configurations": 240,
       "grid_sizes": {
         "cross_sectional_momentum": 4,
@@ -2912,6 +3058,7 @@
     "Multiple testing across complete bounded grids can overstate apparent robustness; no multiplicity correction was applied.",
     "The selected universe reflects one current liquidity snapshot and may introduce survivorship and selection bias.",
     "Ninety days and three OOS folds are limited evidence; regime changes, latency, liquidity, and liquidation are not modeled.",
+    "Last 30d and 90d use the latest fold exact params. Last 30d overlaps the latest-fold IS by 14 days; last 90d overlaps it by 45 days and also includes history before that IS. These returns are not independent OOS estimates and are start-date sensitive.",
     "Research results are not evidence that a strategy is ready for live trading; independent validation and paper trading are required."
   ]
 }

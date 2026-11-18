@@ -18,7 +18,7 @@ import hashlib
 import json
 from pathlib import Path
 import time
-from typing import Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 
 import pandas as pd
 
@@ -42,6 +42,7 @@ from .walkforward import (
     Fold,
     Metrics,
     build_folds,
+    combine_window_results,
     compute_metrics,
     evaluate_candidate,
     passes_research_gates,
@@ -85,6 +86,27 @@ CALIBRATION_PARAMS = {
     "time_stop_bars": 24,
     "cooldown_bars": 6,
 }
+FOLD_CONFIG = {"count": 3, "is_days": 45, "oos_days": 15}
+GATE_THRESHOLDS = {
+    "positive_oos_folds": "strict majority: at least 2 of exactly 3",
+    "minimum_total_oos_return_exclusive": 0.0,
+    "minimum_oos_trades": 30,
+    "maximum_drawdown_floor": -0.30,
+    "minimum_neighbor_robustness": 0.70,
+}
+LATEST_PARAM_CALENDAR_WINDOWS = (7, 30, 90)
+START_SENSITIVITY_WINDOW_DAYS = 23
+START_SENSITIVITY_SHIFT_DAYS = 7
+CALENDAR_DEFINITION = (
+    "last complete UTC calendar days; latest fold exact params; continuous "
+    "cached history for indicators; flat at window start"
+)
+PRODUCTION_SOURCE_FILES = (
+    "engine.py",
+    "strategies.py",
+    "walkforward.py",
+    "run_research.py",
+)
 
 
 @dataclass(frozen=True)
@@ -161,7 +183,12 @@ def build_research_folds(metadata: Mapping[str, object]) -> tuple[Fold, ...]:
         raise ValueError("metadata requires requested_start and requested_end")
     start = _timestamp(metadata["requested_start"]).normalize()
     requested_end = _timestamp(metadata["requested_end"]).normalize()
-    folds = build_folds(start, is_days=45, oos_days=15, n_folds=3)
+    folds = build_folds(
+        start,
+        is_days=FOLD_CONFIG["is_days"],
+        oos_days=FOLD_CONFIG["oos_days"],
+        n_folds=FOLD_CONFIG["count"],
+    )
     if folds[-1].oos_end > requested_end + pd.Timedelta(days=1):
         raise ValueError("metadata coverage is too short for the required folds")
     return folds
@@ -200,11 +227,7 @@ def _signals_with_exact_entry_bar(
     ].copy()
     if selected.empty:
         return selected
-    available = pd.MultiIndex.from_frame(
-        engine_bars[["symbol", "timestamp"]].assign(
-            timestamp=lambda frame: frame["timestamp"]
-        )
-    )
+    available = pd.MultiIndex.from_frame(engine_bars[["symbol", "timestamp"]])
     entry_keys = pd.MultiIndex.from_arrays(
         [
             selected["symbol"],
@@ -423,38 +446,16 @@ def _equity_series(result: BacktestResult) -> pd.Series:
 
 def _chain_results(
     results: Sequence[BacktestResult],
+    windows: Sequence[tuple[object, object]],
 ) -> tuple[pd.Series, list[object], tuple[float, ...]]:
-    values: list[float] = []
-    timestamps: list[pd.Timestamp] = []
-    level = 1.0
-    trades: list[object] = []
-    fold_returns: list[float] = []
-    previous_end: pd.Timestamp | None = None
-    for result in results:
-        equity = _equity_series(result)
-        raw_timestamps = pd.DatetimeIndex(equity.index.get_level_values(0))
-        fold_return = float(equity.iloc[-1] / equity.iloc[0] - 1.0)
-        fold_returns.append(fold_return)
-        normalized = equity / float(equity.iloc[0]) * level
-        if previous_end is not None and raw_timestamps[0] == previous_end:
-            normalized = normalized.iloc[1:]
-            raw_timestamps = raw_timestamps[1:]
-        values.extend(float(value) for value in normalized)
-        timestamps.extend(raw_timestamps)
-        level *= 1.0 + fold_return
-        previous_end = pd.DatetimeIndex(
-            equity.index.get_level_values(0)
-        )[-1]
-        trades.extend(result.trades)
-    index = pd.MultiIndex.from_arrays(
-        [timestamps, range(len(values))],
-        names=["timestamp", "sequence"],
-    )
-    return pd.Series(values, index=index), trades, tuple(fold_returns)
+    return combine_window_results(results, windows)
 
 
-def _metrics_for_results(results: Sequence[BacktestResult]) -> Metrics:
-    equity, trades, fold_returns = _chain_results(results)
+def _metrics_for_results(
+    results: Sequence[BacktestResult],
+    windows: Sequence[tuple[object, object]],
+) -> Metrics:
+    equity, trades, fold_returns = _chain_results(results, windows)
     return compute_metrics(equity, trades, fold_returns=fold_returns)
 
 
@@ -654,9 +655,10 @@ def _frozen_variant_metrics(
                 sizing=REFERENCE_SIZING,
             )
         )
+    oos_windows = [(fold.oos_start, fold.oos_end) for fold in folds]
     return (
-        _metrics_for_results(cost_off_results),
-        _metrics_for_results(reference_results),
+        _metrics_for_results(cost_off_results, oos_windows),
+        _metrics_for_results(reference_results, oos_windows),
     )
 
 
@@ -694,6 +696,7 @@ def _candidate_result(
     folds: Sequence[Fold],
     *,
     calendar_end: pd.Timestamp,
+    gate: Callable[[CandidateEvaluation], bool] = passes_research_gates,
 ) -> dict[str, object]:
     evaluation = _main_evaluation(runner, spec, timeframe, folds)
     selected_params = [
@@ -704,7 +707,8 @@ def _candidate_result(
         raise RuntimeError(
             f"{spec.name}/{timeframe}: no valid exact selection in every fold"
         )
-    exact_params = [dict(params) for params in selected_params if params is not None]
+    exact_params = [dict(params) for params in selected_params]
+    passed = gate(evaluation)
     cost_off, reference = _frozen_variant_metrics(
         runner,
         spec,
@@ -718,14 +722,33 @@ def _candidate_result(
         timeframe,
         exact_params[-1],
         end=calendar_end,
-        windows=(7, 30, 90),
+        windows=LATEST_PARAM_CALENDAR_WINDOWS,
         sizings=(PRIMARY_SIZING, REFERENCE_SIZING),
     )
+    start_sensitivity: dict[str, object] | None = None
+    if passed:
+        primary_sensitivity, reference_sensitivity = _calendar_returns(
+            runner,
+            spec,
+            timeframe,
+            exact_params[-1],
+            end=calendar_end,
+            windows=(START_SENSITIVITY_WINDOW_DAYS,),
+            sizings=(PRIMARY_SIZING, REFERENCE_SIZING),
+        )
+        key = f"{START_SENSITIVITY_WINDOW_DAYS}d"
+        start_sensitivity = {
+            "nominal_window": "30d",
+            "start_shift_days": START_SENSITIVITY_SHIFT_DAYS,
+            "actual_window": key,
+            "primary_return": primary_sensitivity[key],
+            "reference_return": reference_sensitivity[key],
+        }
     return {
         "strategy": spec.name,
         "family": spec.family,
         "timeframe": timeframe,
-        "passed": passes_research_gates(evaluation),
+        "passed": passed,
         "adaptive_params": [
             {"fold": index, "params": deepcopy(params)}
             for index, params in enumerate(exact_params)
@@ -743,6 +766,7 @@ def _candidate_result(
             "calendar_returns": reference_calendar,
         },
         "calendar_returns": primary_calendar,
+        "start_sensitivity": start_sensitivity,
     }
 
 
@@ -759,25 +783,136 @@ def _coverage_text(metadata: Mapping[str, object]) -> str:
     )
 
 
+def _source_gap_details(
+    cache_dir: Path | str,
+    metadata: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """Locate exact missing UTC minutes for metadata-marked incomplete days."""
+    coverage = _require_mapping(metadata.get("coverage"), "metadata.coverage")
+    start = _timestamp(metadata["requested_start"]).normalize()
+    end = _timestamp(metadata["requested_end"]).normalize() + pd.Timedelta(days=1)
+    expected = pd.date_range(start, end, freq="1min", inclusive="left")
+    expected_days = int((end - start) / pd.Timedelta(days=1))
+    root = Path(cache_dir) / "raw_1m"
+    details: list[dict[str, object]] = []
+    for symbol in metadata["universe"]:
+        symbol_coverage = _require_mapping(
+            coverage.get(symbol),
+            f"metadata.coverage.{symbol}",
+        )
+        if int(symbol_coverage["complete_utc_days"]) >= expected_days:
+            continue
+        paths = sorted((root / str(symbol)).glob("*.parquet"))
+        if not paths:
+            raise FileNotFoundError(f"missing raw minute cache for {symbol}")
+        timestamps = pd.DatetimeIndex(
+            pd.concat(
+                [
+                    pd.read_parquet(path, columns=["open_time"])["open_time"]
+                    for path in paths
+                ],
+                ignore_index=True,
+            )
+        )
+        if timestamps.tz is None:
+            timestamps = timestamps.tz_localize("UTC")
+        else:
+            timestamps = timestamps.tz_convert("UTC")
+        actual = timestamps[(timestamps >= start) & (timestamps < end)].unique()
+        missing = expected.difference(actual)
+        for date, date_missing in pd.Series(missing, index=missing).groupby(
+            missing.normalize()
+        ):
+            missing_values = pd.DatetimeIndex(date_missing.index)
+            details.append(
+                {
+                    "instrument": str(symbol),
+                    "date": pd.Timestamp(date).date().isoformat(),
+                    "timestamp": missing_values[0].isoformat(),
+                    "missing_minutes": len(missing_values),
+                    "timestamps": [
+                        timestamp.isoformat() for timestamp in missing_values
+                    ],
+                }
+            )
+    return sorted(
+        details,
+        key=lambda item: (str(item["instrument"]), str(item["timestamp"])),
+    )
+
+
 def _require_mapping(value: object, path: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{path} must be an object")
     return value
 
 
-def _fingerprint(data: ResearchData) -> str:
+def _fingerprint_payload(
+    data: ResearchData,
+    *,
+    source_contents: Mapping[str, bytes | str] | None = None,
+) -> dict[str, object]:
     manifest = search_space_manifest()
-    payload = {
+    if source_contents is None:
+        source_root = Path(__file__).resolve().parent
+        contents: Mapping[str, bytes | str] = {
+            name: (source_root / name).read_bytes()
+            for name in PRODUCTION_SOURCE_FILES
+        }
+    else:
+        contents = source_contents
+    missing_sources = set(PRODUCTION_SOURCE_FILES).difference(contents)
+    if missing_sources:
+        raise ValueError(
+            f"fingerprint source contents missing {sorted(missing_sources)}"
+        )
+    source_hashes = {
+        name: hashlib.sha256(
+            value.encode() if isinstance(value, str) else value
+        ).hexdigest()
+        for name, value in sorted(contents.items())
+    }
+    metadata_bytes = json.dumps(
+        _json_ready(data.metadata),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode()
+    return {
         "requested_start": data.metadata["requested_start"],
         "requested_end": data.metadata["requested_end"],
         "universe": data.metadata["universe"],
+        "metadata_generated_at": data.metadata.get("generated_at"),
+        "metadata_sha256": hashlib.sha256(metadata_bytes).hexdigest(),
+        "production_source_sha256": source_hashes,
         "grids": manifest["grids"],
         "timeframes": TIMEFRAMES,
-        "cost_on": asdict(COST_ON_EXECUTION),
-        "cost_off": asdict(COST_OFF_EXECUTION),
-        "primary": asdict(PRIMARY_SIZING),
-        "reference": asdict(REFERENCE_SIZING),
+        "fold_config": dict(FOLD_CONFIG),
+        "gate_thresholds": dict(GATE_THRESHOLDS),
+        "calendar": {
+            "definition": CALENDAR_DEFINITION,
+            "latest_param_windows_days": list(LATEST_PARAM_CALENDAR_WINDOWS),
+            "start_sensitivity_days": START_SENSITIVITY_WINDOW_DAYS,
+            "start_sensitivity_shift_days": START_SENSITIVITY_SHIFT_DAYS,
+        },
+        "execution": {
+            "cost_on": asdict(COST_ON_EXECUTION),
+            "cost_off": asdict(COST_OFF_EXECUTION),
+            "cost_off_funding": False,
+        },
+        "sizing": {
+            "primary": asdict(PRIMARY_SIZING),
+            "reference": asdict(REFERENCE_SIZING),
+        },
     }
+
+
+def _fingerprint(
+    data: ResearchData,
+    *,
+    source_contents: Mapping[str, bytes | str] | None = None,
+) -> str:
+    payload = _fingerprint_payload(data, source_contents=source_contents)
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -807,6 +942,7 @@ def _checkpoint_payload(
     started_at: str,
     results: Mapping[tuple[str, str], Mapping[str, object]],
     elapsed_seconds: float,
+    run_stats: Mapping[str, int],
 ) -> dict[str, object]:
     ordered = [
         results[(strategy, timeframe)]
@@ -821,6 +957,7 @@ def _checkpoint_payload(
         "elapsed_seconds": round(elapsed_seconds, 6),
         "completed": len(ordered),
         "expected": len(STRATEGY_SPECS) * len(TIMEFRAMES),
+        "run_stats": dict(run_stats),
         "results": ordered,
     }
 
@@ -884,6 +1021,8 @@ def run_full_research(
     if fresh:
         checkpoint.unlink(missing_ok=True)
     completed = _load_checkpoint(checkpoint, fingerprint=fingerprint)
+    checkpoint_reused_candidates = len(completed)
+    fresh_candidates = 0
     expected = len(STRATEGY_SPECS) * len(TIMEFRAMES)
 
     for strategy_name, spec in STRATEGY_SPECS.items():
@@ -909,6 +1048,7 @@ def run_full_research(
                 folds,
                 calendar_end=calendar_end,
             )
+            fresh_candidates += 1
             result_elapsed = time.perf_counter() - result_started
             print(
                 f"[{ordinal:02d}/{expected}] {strategy_name}/{timeframe}: "
@@ -925,6 +1065,13 @@ def run_full_research(
                     started_at=started_at,
                     results=completed,
                     elapsed_seconds=time.perf_counter() - started_clock,
+                    run_stats={
+                        "fresh_backtests": runner.backtests,
+                        "fresh_candidates": fresh_candidates,
+                        "checkpoint_reused_candidates": (
+                            checkpoint_reused_candidates
+                        ),
+                    },
                 ),
             )
             runner.clear_candidate_caches()
@@ -940,6 +1087,18 @@ def run_full_research(
     )
     for rank, candidate in enumerate(candidates, start=1):
         candidate["rank"] = rank
+        candidate["pass_rank"] = None
+    passers = sorted(
+        (candidate for candidate in candidates if candidate["passed"]),
+        key=lambda candidate: (
+            -float(candidate["oos"]["sharpe"]),
+            -float(candidate["oos"]["return"]),
+            str(candidate["strategy"]),
+            str(candidate["timeframe"]),
+        ),
+    )
+    for pass_rank, candidate in enumerate(passers, start=1):
+        candidate["pass_rank"] = pass_rank
 
     calibration = _calibration(
         runner,
@@ -958,6 +1117,9 @@ def run_full_research(
             "strategies": len(STRATEGY_SPECS),
             "timeframes": len(TIMEFRAMES),
             "actual_backtests": runner.backtests,
+            "fresh_backtests": runner.backtests,
+            "fresh_candidates": fresh_candidates,
+            "checkpoint_reused_candidates": checkpoint_reused_candidates,
             "backtest_cache_hits": runner.cache_hits,
             "signal_generations": runner.signal_generations,
         }
@@ -974,6 +1136,7 @@ def run_full_research(
             "universe": list(data.metadata["universe"]),
             "timeframes": list(TIMEFRAMES),
             "coverage": _coverage_text(data.metadata),
+            "source_gaps": _source_gap_details(cache_dir, data.metadata),
         },
         "research": {
             "cost_model": {
@@ -994,22 +1157,27 @@ def run_full_research(
                 for fold in folds
             ],
             "calendar_window_end": calendar_end.isoformat(),
-            "calendar_window_definition": (
-                "last complete UTC calendar days; latest fold exact params; "
-                "continuous cached history for indicators; flat at window start"
-            ),
+            "calendar_window_definition": CALENDAR_DEFINITION,
+            "calendar_overlap_disclosure": {
+                "parameter_source": "latest fold exact params",
+                "last_30d_latest_is_overlap_days": 14,
+                "last_90d_latest_is_overlap_days": 45,
+                "last_90d_includes_pre_latest_is_history": True,
+                "independent_oos": False,
+                "start_sensitive": True,
+                "sensitivity_window": "23d (30d start shifted +7d)",
+            },
             "neighbor_rule": (
                 "unique legal one-step grid neighbors; positive compounded "
                 "OOS return divided by all unique neighbors, with invalid, "
                 "flat, and losing neighbors nonpositive"
             ),
-            "ranking": "OOS daily Sharpe descending, then OOS return descending",
-            "passing_gates": {
-                "positive_oos_folds": "strict majority: at least 2 of exactly 3",
-                "minimum_oos_trades": 30,
-                "maximum_drawdown_floor": -0.30,
-                "minimum_neighbor_robustness": 0.70,
-            },
+            "ranking": (
+                "overall and passing lists each use OOS daily Sharpe "
+                "descending, then OOS return descending; overall rank does "
+                "not imply passing status"
+            ),
+            "passing_gates": dict(GATE_THRESHOLDS),
             "search_counts": search_counts,
             "elapsed_seconds": round(elapsed, 6),
             "checkpoint": str(checkpoint),
@@ -1031,6 +1199,13 @@ def run_full_research(
                 "changes, latency, liquidity, and liquidation are not modeled."
             ),
             (
+                "Last 30d and 90d use the latest fold exact params. Last 30d "
+                "overlaps the latest-fold IS by 14 days; last 90d overlaps it "
+                "by 45 days and also includes history before that IS. These "
+                "returns are not independent OOS estimates and are "
+                "start-date sensitive."
+            ),
+            (
                 "Research results are not evidence that a strategy is ready "
                 "for live trading; independent validation and paper trading "
                 "are required."
@@ -1047,6 +1222,11 @@ def run_full_research(
             started_at=started_at,
             results=completed,
             elapsed_seconds=elapsed,
+            run_stats={
+                "fresh_backtests": runner.backtests,
+                "fresh_candidates": fresh_candidates,
+                "checkpoint_reused_candidates": checkpoint_reused_candidates,
+            },
         ),
     )
     return summary
