@@ -9,13 +9,18 @@ import pandas as pd
 import pytest
 
 from cost_aware.data import (
+    _request_bytes,
     fetch_daily_archives,
     fetch_funding_history,
     resample_ohlcv,
     select_universe,
     validate_ohlcv,
 )
-from scripts.fetch_okx_history import complete_days
+from scripts.fetch_okx_history import (
+    choose_covered_universe,
+    complete_days,
+    ticker_snapshot,
+)
 
 
 def candles(minutes: list[int]) -> pd.DataFrame:
@@ -61,6 +66,78 @@ def test_select_universe_ranks_active_usdt_swaps_by_quote_volume_and_forces_majo
         "ETH-USDT-SWAP",
         "SOL-USDT-SWAP",
     ]
+
+
+def test_choose_covered_universe_replaces_nonforced_without_squeezing_forced():
+    coverage = {
+        "LOW-USDT-SWAP": 89,
+        "BACKUP-USDT-SWAP": 90,
+        "BTC-USDT-SWAP": 90,
+        "ETH-USDT-SWAP": 91,
+        "SOL-USDT-SWAP": 90,
+    }
+
+    selected = choose_covered_universe(
+        [
+            "LOW-USDT-SWAP",
+            "BTC-USDT-SWAP",
+            "ETH-USDT-SWAP",
+            "SOL-USDT-SWAP",
+        ],
+        ["BACKUP-USDT-SWAP"],
+        coverage,
+        limit=4,
+    )
+
+    assert selected == [
+        "BACKUP-USDT-SWAP",
+        "BTC-USDT-SWAP",
+        "ETH-USDT-SWAP",
+        "SOL-USDT-SWAP",
+    ]
+
+
+def test_choose_covered_universe_fails_when_forced_instrument_lacks_coverage():
+    coverage = {
+        "BACKUP-USDT-SWAP": 91,
+        "BTC-USDT-SWAP": 91,
+        "ETH-USDT-SWAP": 89,
+        "SOL-USDT-SWAP": 91,
+    }
+
+    with pytest.raises(ValueError, match="forced.*ETH-USDT-SWAP.*89"):
+        choose_covered_universe(
+            ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"],
+            ["BACKUP-USDT-SWAP"],
+            coverage,
+            limit=4,
+        )
+
+
+def test_ticker_snapshot_records_quote_volume_and_market_rank():
+    snapshot = ticker_snapshot(
+        ["BTC-USDT-SWAP", "SOL-USDT-SWAP"],
+        [
+            {"instId": "SOL-USDT-SWAP", "last": "5", "volCcy24h": "3"},
+            {"instId": "BTC-USDT-SWAP", "last": "100", "volCcy24h": "2"},
+            {"instId": "ETH-USDT-SWAP", "last": "10", "volCcy24h": "3"},
+        ],
+    )
+
+    assert snapshot == {
+        "BTC-USDT-SWAP": {
+            "last": 100.0,
+            "volCcy24h": 2.0,
+            "estimated_quote_volume": 200.0,
+            "rank": 1,
+        },
+        "SOL-USDT-SWAP": {
+            "last": 5.0,
+            "volCcy24h": 3.0,
+            "estimated_quote_volume": 15.0,
+            "rank": 3,
+        },
+    }
 
 
 def test_validate_ohlcv_normalizes_open_time_to_utc_and_sorts():
@@ -160,6 +237,40 @@ class Response:
         return self.payload
 
 
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_request_bytes_retries_rate_limits_and_server_errors(
+    status, monkeypatch
+):
+    calls = 0
+    sleeps = []
+
+    def opener(request, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise HTTPError(
+                request.full_url,
+                status,
+                "retry",
+                {"Retry-After": "0"},
+                None,
+            )
+        return Response(b"ok")
+
+    monkeypatch.setattr("cost_aware.data.time.sleep", sleeps.append)
+
+    result = _request_bytes(
+        "https://example.test/data",
+        opener=opener,
+        timeout=1,
+        retries=1,
+    )
+
+    assert result == b"ok"
+    assert calls == 2
+    assert sleeps == [0.0]
+
+
 def zipped_csv(text: str) -> bytes:
     payload = BytesIO()
     with ZipFile(payload, "w") as archive:
@@ -207,21 +318,44 @@ def test_fetch_funding_history_paginates_with_bounds_and_prefers_realized_rate(
     tmp_path,
 ):
     calls = []
+    start = pd.Timestamp("2026-01-01 00:00:00+00:00")
+    end = pd.Timestamp("2026-01-03 00:00:00+00:00")
+
+    def ms(timestamp):
+        return str(int(pd.Timestamp(timestamp).timestamp() * 1000))
+
     pages = [
         {
             "code": "0",
             "data": [
                 {
                     "instId": "BTC-USDT-SWAP",
-                    "fundingTime": "1767312000000",
+                    "fundingTime": ms("2026-01-02 16:00:00+00:00"),
                     "realizedRate": "0.001",
                     "fundingRate": "0.009",
                 },
                 {
                     "instId": "BTC-USDT-SWAP",
-                    "fundingTime": "1767283200000",
+                    "fundingTime": ms("2026-01-02 08:00:00+00:00"),
                     "realizedRate": "",
                     "fundingRate": "0.002",
+                },
+            ],
+        },
+        {
+            "code": "0",
+            "data": [
+                {
+                    "instId": "BTC-USDT-SWAP",
+                    "fundingTime": ms("2026-01-01 16:00:00+00:00"),
+                    "realizedRate": "0.003",
+                    "fundingRate": "0.009",
+                },
+                {
+                    "instId": "BTC-USDT-SWAP",
+                    "fundingTime": ms("2026-01-01 08:00:00+00:00"),
+                    "realizedRate": "0.004",
+                    "fundingRate": "0.009",
                 },
             ],
         },
@@ -234,19 +368,142 @@ def test_fetch_funding_history_paginates_with_bounds_and_prefers_realized_rate(
 
     result = fetch_funding_history(
         "BTC-USDT-SWAP",
-        pd.Timestamp("2026-01-01 00:00:00+00:00"),
-        pd.Timestamp("2026-01-03 00:00:00+00:00"),
+        start,
+        end,
         tmp_path / "funding.parquet",
         opener=opener,
         page_limit=2,
     )
 
-    assert result["rate"].tolist() == [0.002, 0.001]
+    assert result["rate"].tolist() == [0.004, 0.003, 0.002, 0.001]
     first_query = parse_qs(urlparse(calls[0][0].full_url).query)
     second_query = parse_qs(urlparse(calls[1][0].full_url).query)
-    assert first_query["before"] == ["1767225600000"]
-    assert first_query["after"] == ["1767398400000"]
-    assert second_query["before"] == ["1767225600000"]
-    assert second_query["after"] == ["1767283200000"]
+    assert first_query["before"] == [ms(start)]
+    assert first_query["after"] == [ms(end)]
+    assert second_query["before"] == [ms(start)]
+    assert second_query["after"] == [ms("2026-01-02 08:00:00+00:00")]
     assert all(request.headers["User-agent"] for request, _ in calls)
     assert pd.read_parquet(tmp_path / "funding.parquet").equals(result)
+
+
+def test_fetch_funding_history_rejects_empty_successful_response(tmp_path):
+    def opener(_request, _timeout=None, **_kwargs):
+        return Response(b'{"code":"0","data":[]}')
+
+    with pytest.raises(ValueError, match="empty funding history"):
+        fetch_funding_history(
+            "BTC-USDT-SWAP",
+            pd.Timestamp("2026-01-01 00:00:00+00:00"),
+            pd.Timestamp("2026-01-03 00:00:00+00:00"),
+            tmp_path / "funding.parquet",
+            opener=opener,
+        )
+
+
+def test_fetch_funding_history_rejects_truncated_window(tmp_path):
+    pages = [
+        {
+            "code": "0",
+            "data": [
+                {
+                    "instId": "BTC-USDT-SWAP",
+                    "fundingTime": str(
+                        int(
+                            pd.Timestamp(
+                                "2026-01-02 08:00:00+00:00"
+                            ).timestamp()
+                            * 1000
+                        )
+                    ),
+                    "realizedRate": "0.001",
+                }
+            ],
+        },
+        {"code": "0", "data": []},
+    ]
+
+    def opener(_request, _timeout=None, **_kwargs):
+        return Response(json.dumps(pages.pop(0)).encode())
+
+    with pytest.raises(ValueError, match="does not cover requested window"):
+        fetch_funding_history(
+            "BTC-USDT-SWAP",
+            pd.Timestamp("2026-01-01 00:00:00+00:00"),
+            pd.Timestamp("2026-01-03 00:00:00+00:00"),
+            tmp_path / "funding.parquet",
+            opener=opener,
+        )
+
+
+def test_fetch_funding_history_accepts_four_hour_settlement_boundaries(tmp_path):
+    start = pd.Timestamp("2026-01-01 00:00:00+00:00")
+    end = pd.Timestamp("2026-01-02 00:00:00+00:00")
+    timestamps = pd.date_range(start + pd.Timedelta(hours=4), end, freq="4h")
+    page = {
+        "code": "0",
+        "data": [
+            {
+                "instId": "BTC-USDT-SWAP",
+                "fundingTime": str(int(timestamp.timestamp() * 1000)),
+                "realizedRate": "0.001",
+            }
+            for timestamp in reversed(timestamps[:-1])
+        ],
+    }
+    pages = [page, {"code": "0", "data": []}]
+
+    def opener(_request, _timeout=None, **_kwargs):
+        return Response(json.dumps(pages.pop(0)).encode())
+
+    result = fetch_funding_history(
+        "BTC-USDT-SWAP",
+        start,
+        end,
+        tmp_path / "funding.parquet",
+        opener=opener,
+    )
+
+    assert result["timestamp"].iloc[0] == start + pd.Timedelta(hours=4)
+    assert result["timestamp"].iloc[-1] == end - pd.Timedelta(hours=4)
+
+
+def test_fetch_funding_history_retries_http_200_business_error(tmp_path):
+    start = pd.Timestamp("2026-01-01 00:00:00+00:00")
+    end = pd.Timestamp("2026-01-02 00:00:00+00:00")
+    responses = [
+        {"code": "50011", "msg": "rate limit", "data": []},
+        {
+            "code": "0",
+            "data": [
+                {
+                    "instId": "BTC-USDT-SWAP",
+                    "fundingTime": str(
+                        int((start + pd.Timedelta(hours=8)).timestamp() * 1000)
+                    ),
+                    "realizedRate": "0.001",
+                },
+                {
+                    "instId": "BTC-USDT-SWAP",
+                    "fundingTime": str(
+                        int((end - pd.Timedelta(hours=8)).timestamp() * 1000)
+                    ),
+                    "realizedRate": "0.002",
+                },
+            ],
+        },
+        {"code": "0", "data": []},
+    ]
+
+    def opener(_request, _timeout=None, **_kwargs):
+        return Response(json.dumps(responses.pop(0)).encode())
+
+    result = fetch_funding_history(
+        "BTC-USDT-SWAP",
+        start,
+        end,
+        tmp_path / "funding.parquet",
+        opener=opener,
+        retries=1,
+    )
+
+    assert len(result) == 2

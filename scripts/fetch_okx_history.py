@@ -32,6 +32,80 @@ TICKERS_URL = "https://www.okx.com/api/v5/market/tickers"
 FORCED = ("BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP")
 
 
+def choose_covered_universe(
+    primary: list[str],
+    backups: list[str],
+    coverage: dict[str, int],
+    *,
+    limit: int,
+    forced: tuple[str, ...] = FORCED,
+    minimum_days: int = 90,
+) -> list[str]:
+    insufficient_forced = [
+        f"{instrument} ({coverage.get(instrument, 0)} days)"
+        for instrument in forced
+        if coverage.get(instrument, 0) < minimum_days
+    ]
+    if insufficient_forced:
+        raise ValueError(
+            "forced instrument coverage below "
+            f"{minimum_days} days: {', '.join(insufficient_forced)}"
+        )
+
+    ranked = list(dict.fromkeys([*primary, *backups]))
+    nonforced = [
+        instrument
+        for instrument in ranked
+        if instrument not in forced
+        and coverage.get(instrument, 0) >= minimum_days
+    ]
+    needed = limit - len(forced)
+    if len(nonforced) < needed:
+        raise ValueError(
+            f"only {len(nonforced) + len(forced)} instruments have "
+            f"{minimum_days} complete days; {limit} required"
+        )
+    return [*nonforced[:needed], *forced]
+
+
+def ticker_snapshot(
+    selected: list[str],
+    tickers: list[dict[str, object]],
+) -> dict[str, dict[str, float | int]]:
+    rows = []
+    for ticker in tickers:
+        try:
+            last = float(ticker["last"])
+            volume = float(ticker["volCcy24h"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        rows.append(
+            (
+                str(ticker.get("instId", "")),
+                last,
+                volume,
+                last * volume,
+            )
+        )
+    rows.sort(key=lambda row: (-row[3], row[0]))
+    by_instrument = {
+        instrument: {
+            "last": last,
+            "volCcy24h": volume,
+            "estimated_quote_volume": quote_volume,
+            "rank": rank,
+        }
+        for rank, (instrument, last, volume, quote_volume) in enumerate(
+            rows, start=1
+        )
+    }
+    return {
+        instrument: by_instrument[instrument]
+        for instrument in selected
+        if instrument in by_instrument
+    }
+
+
 def public_data(url: str, parameters: dict[str, object]) -> list[dict[str, object]]:
     payload = json.loads(
         _request_bytes(
@@ -161,7 +235,6 @@ def main() -> int:
 
     download(primary)
     coverage_days: dict[str, list[str]] = {}
-    selected: list[str] = []
     rejected: list[dict[str, object]] = []
     for instrument in primary:
         days = complete_days(
@@ -170,9 +243,7 @@ def main() -> int:
             end_date,
         )
         coverage_days[instrument] = days
-        if len(days) >= 90:
-            selected.append(instrument)
-        else:
+        if len(days) < 90:
             rejected.append(
                 {
                     "instrument": instrument,
@@ -181,8 +252,28 @@ def main() -> int:
                 }
             )
 
+    coverage_counts = {
+        instrument: len(days) for instrument, days in coverage_days.items()
+    }
+    try:
+        choose_covered_universe(
+            list(FORCED),
+            [],
+            coverage_counts,
+            limit=len(FORCED),
+        )
+    except ValueError as error:
+        print(f"universe selection failed: {error}", file=sys.stderr)
+        return 1
+
+    evaluated_backups: list[str] = []
+    required_nonforced = args.universe_size - len(FORCED)
     for backup in backups:
-        if len(selected) >= args.universe_size:
+        covered_nonforced = sum(
+            instrument not in FORCED and days >= 90
+            for instrument, days in coverage_counts.items()
+        )
+        if covered_nonforced >= required_nonforced:
             break
         download([backup])
         days = complete_days(
@@ -191,9 +282,9 @@ def main() -> int:
             end_date,
         )
         coverage_days[backup] = days
-        if len(days) >= 90:
-            selected.append(backup)
-        else:
+        coverage_counts[backup] = len(days)
+        evaluated_backups.append(backup)
+        if len(days) < 90:
             rejected.append(
                 {
                     "instrument": backup,
@@ -202,9 +293,16 @@ def main() -> int:
                 }
             )
 
-    # Forced instruments stay mandatory; a coverage failure is reported, not hidden.
-    selected = list(dict.fromkeys([*selected, *FORCED]))
-    selected = selected[: args.universe_size]
+    try:
+        selected = choose_covered_universe(
+            primary,
+            evaluated_backups,
+            coverage_counts,
+            limit=args.universe_size,
+        )
+    except ValueError as error:
+        print(f"universe selection failed: {error}", file=sys.stderr)
+        return 1
 
     output_coverage: dict[str, object] = {}
     funding_failures: list[dict[str, str]] = []
@@ -274,6 +372,16 @@ def main() -> int:
             flush=True,
         )
 
+    active_usdt = {
+        str(item.get("instId", ""))
+        for item in instruments
+        if item.get("state") == "live"
+        and item.get("settleCcy") == "USDT"
+        and str(item.get("instId", "")).endswith("-USDT-SWAP")
+    }
+    selected_tickers = [
+        ticker for ticker in tickers if str(ticker.get("instId", "")) in active_usdt
+    ]
     metadata = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "OKX public tickers, instruments, daily archives, and funding API",
@@ -282,6 +390,7 @@ def main() -> int:
         "requested_days": args.days,
         "universe_size_requested": args.universe_size,
         "universe": selected,
+        "ticker_snapshot": ticker_snapshot(selected, selected_tickers),
         "forced_instruments": list(FORCED),
         "downloaded_candidates": requested,
         "rejected_candidates": rejected,

@@ -146,16 +146,24 @@ def _request_bytes(
 ) -> bytes:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     for attempt in range(retries + 1):
+        delay = 0.25 * (2**attempt)
         try:
             with opener(request, timeout=timeout) as response:
                 return response.read()
         except HTTPError as error:
-            if error.code == 404 or error.code < 500 or attempt == retries:
+            retryable = error.code == 429 or error.code >= 500
+            if not retryable or attempt == retries:
                 raise
+            retry_after = error.headers.get("Retry-After") if error.headers else None
+            if retry_after is not None:
+                try:
+                    delay = max(0.0, float(retry_after))
+                except ValueError:
+                    pass
         except (URLError, TimeoutError, OSError):
             if attempt == retries:
                 raise
-        time.sleep(0.25 * (2**attempt))
+        time.sleep(delay)
     raise RuntimeError("unreachable retry state")
 
 
@@ -291,16 +299,24 @@ def fetch_funding_history(
                 "limit": page_limit,
             }
         )
-        payload = json.loads(
-            _request_bytes(
-                f"{FUNDING_URL}?{query}",
-                opener=opener,
-                timeout=timeout,
-                retries=retries,
+        url = f"{FUNDING_URL}?{query}"
+        for attempt in range(retries + 1):
+            payload = json.loads(
+                _request_bytes(
+                    url,
+                    opener=opener,
+                    timeout=timeout,
+                    retries=retries,
+                )
             )
-        )
-        if payload.get("code") != "0":
-            raise RuntimeError(f"OKX funding API error: {payload}")
+            if payload.get("code") == "0":
+                break
+            if attempt == retries:
+                raise RuntimeError(
+                    "OKX funding API error "
+                    f"code={payload.get('code')} msg={payload.get('msg', '')}"
+                )
+            time.sleep(0.25 * (2**attempt))
         page = payload.get("data", [])
         if not page:
             break
@@ -331,6 +347,26 @@ def fetch_funding_history(
             .sort_values(["timestamp", "symbol"], kind="stable")
             .reset_index(drop=True)
         )
+
+    if frame.empty:
+        raise ValueError(f"{instrument}: empty funding history")
+    timestamps = frame["timestamp"]
+    if len(timestamps) >= 2:
+        differences = timestamps.diff().dropna()
+        interval = min(differences.median(), pd.Timedelta(hours=8))
+    else:
+        interval = pd.Timedelta(hours=8)
+    if (
+        timestamps.iloc[0] > start + interval
+        or timestamps.iloc[-1] < end - interval
+    ):
+        raise ValueError(
+            f"{instrument}: funding history does not cover requested window "
+            f"{start.isoformat()} to {end.isoformat()}; "
+            f"observed {timestamps.iloc[0].isoformat()} to "
+            f"{timestamps.iloc[-1].isoformat()}"
+        )
+
     destination = Path(cache_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(destination, index=False)
