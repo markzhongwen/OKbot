@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 import pytest
 
 from cost_aware.config import ExecutionConfig, SizingConfig
-from cost_aware.engine import BacktestResult, Trade, run_backtest, run_backtest_result
+from cost_aware.engine import (
+    BacktestResult,
+    Trade,
+    prepare_candles,
+    run_backtest,
+    run_backtest_result,
+)
 
 
 UTC = timezone.utc
@@ -659,6 +665,40 @@ def test_result_is_independent_of_candle_signal_and_funding_input_order():
     assert [trade.symbol for trade in forward.trades] == ["BTC", "ETH"]
     at_two = [event.kind for event in forward.equity_events if event.timestamp == ts(2)]
     assert at_two == ["funding", "funding", "exit", "exit", "bar_mark"]
+
+
+def test_prepared_candles_are_semantically_identical_to_raw_candles():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 101, 94, 96),
+    ]
+    signals = [signal("BTC", 0, "long", stop=95, take_profit=200)]
+    funding = [{"symbol": "BTC", "timestamp": ts(2), "rate": 0.01}]
+
+    raw = run_backtest_result(
+        candles,
+        signals,
+        funding,
+        execution,
+        sizing,
+        start_time=ts(0),
+        end_time=ts(3),
+        expected_cadence="1h",
+    )
+    prepared = run_backtest_result(
+        prepare_candles(candles),
+        signals,
+        funding,
+        execution,
+        sizing,
+        start_time=ts(0),
+        end_time=ts(3),
+        expected_cadence="1h",
+    )
+
+    assert prepared == raw
 
 
 def test_force_close_rejects_stale_last_close_when_final_bar_is_missing():

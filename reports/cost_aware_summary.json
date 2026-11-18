@@ -1,0 +1,2917 @@
+{
+  "calibration": {
+    "direction": "both",
+    "legacy_equal_weight_returns": {
+      "30d": -0.16902830563988192,
+      "56d": -0.22970029431213068,
+      "7d": -0.029126819632563694
+    },
+    "legacy_method": "engine-compatible approximation: 1/N current-equity margin, 1x leverage, max N simultaneous positions",
+    "params": {
+      "atr_window": 14,
+      "cooldown_bars": 6,
+      "lookback": 20,
+      "stop_atr": 3.5,
+      "take_profit_atr": 4.0,
+      "time_stop_bars": 24
+    },
+    "primary_returns": {
+      "30d": -0.46526083996735657,
+      "56d": -0.6973489694109003,
+      "7d": -0.19952247777043786
+    },
+    "strategy": "donchian",
+    "timeframe": "15m",
+    "user_reference_returns": {
+      "30d": -0.127,
+      "56d": -0.181,
+      "7d": -0.066
+    }
+  },
+  "candidates": [
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 12,
+            "selection_count": 1,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 12,
+            "selection_count": 1,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 12,
+            "selection_count": 1,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.21956122688105562,
+        "7d": 0.008986798311204858,
+        "90d": 0.28784041128269333
+      },
+      "cost_off": {
+        "max_drawdown": -0.47974670630312066,
+        "return": 0.5787249894995996,
+        "sharpe": 2.638454223604861,
+        "trades": 53,
+        "win_rate": 0.4528301886792453
+      },
+      "family": "cross_sectional_rotation",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 12,
+        "selection_count": 1,
+        "stop_atr": 2.0,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 1,
+        "robustness": 0.5,
+        "total": 2
+      },
+      "oos": {
+        "fold_returns": [
+          1.3197750198233131,
+          -0.17322588488420243,
+          -0.22035818242191008
+        ],
+        "max_drawdown": -0.49271583348458536,
+        "return": 0.4952983838493721,
+        "sharpe": 2.4706998729754392,
+        "trades": 53,
+        "win_rate": 0.4528301886792453
+      },
+      "passed": false,
+      "rank": 1,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.014651517016094018,
+          "7d": 0.007650154979213175,
+          "90d": 0.19505498383769737
+        },
+        "oos": {
+          "max_drawdown": -0.17270821794656288,
+          "return": 0.21532022254450744,
+          "sharpe": 2.3593689574198558,
+          "trades": 53,
+          "win_rate": 0.4528301886792453
+        }
+      },
+      "strategy": "cross_sectional_momentum",
+      "timeframe": "4h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "both",
+            "return_lookback": 1,
+            "return_threshold": 0.04,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 1.5,
+            "volume_window": 20
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "short",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 1.5,
+            "volume_window": 40
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "short",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 1.5,
+            "volume_window": 40
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": 0.23530584378590302,
+        "7d": 0.15190097615878995,
+        "90d": 0.16456668323911505
+      },
+      "cost_off": {
+        "max_drawdown": -0.17454159397764613,
+        "return": 0.24509674192020414,
+        "sharpe": 3.2391557461720284,
+        "trades": 93,
+        "win_rate": 0.5268817204301075
+      },
+      "family": "extreme_reversal",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "direction": "short",
+        "return_lookback": 1,
+        "return_threshold": 0.02,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24,
+        "volume_multiplier": 1.5,
+        "volume_window": 40
+      },
+      "neighbor": {
+        "positive": 6,
+        "robustness": 0.75,
+        "total": 8
+      },
+      "oos": {
+        "fold_returns": [
+          0.002925646839554874,
+          -0.03081308148984796,
+          0.15596919007243026
+        ],
+        "max_drawdown": -0.17847211696140808,
+        "return": 0.12362796629117634,
+        "sharpe": 1.8864507469460199,
+        "trades": 93,
+        "win_rate": 0.5053763440860215
+      },
+      "passed": true,
+      "rank": 2,
+      "reference": {
+        "calendar_returns": {
+          "30d": 0.07824910469381452,
+          "7d": 0.04742976017572831,
+          "90d": 0.061441610453796036
+        },
+        "oos": {
+          "max_drawdown": -0.058481797768418664,
+          "return": 0.04559041065875524,
+          "sharpe": 2.0333582874996825,
+          "trades": 93,
+          "win_rate": 0.5053763440860215
+        }
+      },
+      "strategy": "extreme_reversal",
+      "timeframe": "3m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "both",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 2.0,
+            "volume_window": 40
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "short",
+            "return_lookback": 1,
+            "return_threshold": 0.04,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 2.0,
+            "volume_window": 20
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "short",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 2.0,
+            "volume_window": 20
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": 0.8722963261392489,
+        "7d": 0.06146969719848383,
+        "90d": 0.18229249800626746
+      },
+      "cost_off": {
+        "max_drawdown": -0.32297703906341313,
+        "return": 0.2647318835231389,
+        "sharpe": 1.9863430135580191,
+        "trades": 45,
+        "win_rate": 0.5111111111111111
+      },
+      "family": "extreme_reversal",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "direction": "short",
+        "return_lookback": 1,
+        "return_threshold": 0.02,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24,
+        "volume_multiplier": 2.0,
+        "volume_window": 20
+      },
+      "neighbor": {
+        "positive": 6,
+        "robustness": 0.6,
+        "total": 10
+      },
+      "oos": {
+        "fold_returns": [
+          -0.007617645125927774,
+          -0.20894363925027315,
+          0.5433189179045075
+        ],
+        "max_drawdown": -0.32839262392054736,
+        "return": 0.21155222750739378,
+        "sharpe": 1.77168186761264,
+        "trades": 45,
+        "win_rate": 0.5111111111111111
+      },
+      "passed": false,
+      "rank": 3,
+      "reference": {
+        "calendar_returns": {
+          "30d": 0.2581062010692323,
+          "7d": 0.025139274375729048,
+          "90d": 0.15246509283235432
+        },
+        "oos": {
+          "max_drawdown": -0.11263542752583988,
+          "return": 0.09941597769518862,
+          "sharpe": 1.7535098279215182,
+          "trades": 45,
+          "win_rate": 0.5111111111111111
+        }
+      },
+      "strategy": "extreme_reversal",
+      "timeframe": "4h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 12,
+            "selection_count": 1,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 24,
+            "selection_count": 1,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 24,
+            "selection_count": 1,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.1744331782454992,
+        "7d": 0.04885545589531559,
+        "90d": -0.5261015908281085
+      },
+      "cost_off": {
+        "max_drawdown": -0.5606594176189595,
+        "return": 0.24305741351212573,
+        "sharpe": 1.915055333417781,
+        "trades": 169,
+        "win_rate": 0.47928994082840237
+      },
+      "family": "cross_sectional_rotation",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 24,
+        "selection_count": 1,
+        "stop_atr": 2.0,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 3,
+        "robustness": 0.75,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          0.39256421699761757,
+          0.2990404180703432,
+          -0.4292039462585421
+        ],
+        "max_drawdown": -0.5850521360312791,
+        "return": 0.0325684644953268,
+        "sharpe": 1.2268220134413448,
+        "trades": 169,
+        "win_rate": 0.46745562130177515
+      },
+      "passed": false,
+      "rank": 4,
+      "reference": {
+        "calendar_returns": {
+          "30d": 0.00856000195046347,
+          "7d": 0.02770664655992916,
+          "90d": -0.1172760829393944
+        },
+        "oos": {
+          "max_drawdown": -0.21448023882519918,
+          "return": 0.08033362509752195,
+          "sharpe": 1.253315145440215,
+          "trades": 169,
+          "win_rate": 0.46745562130177515
+        }
+      },
+      "strategy": "cross_sectional_momentum",
+      "timeframe": "1h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 20,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": 1.001798125717786,
+        "7d": 0.3359008741216454,
+        "90d": 1.6013592381502666
+      },
+      "cost_off": {
+        "max_drawdown": -0.2542079881019875,
+        "return": 0.0973830149409245,
+        "sharpe": 1.1760696326010491,
+        "trades": 55,
+        "win_rate": 0.5454545454545454
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 20,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 5,
+        "robustness": 0.7142857142857143,
+        "total": 7
+      },
+      "oos": {
+        "fold_returns": [
+          0.06827729230015822,
+          0.02020466056465353,
+          -0.03771851268911308
+        ],
+        "max_drawdown": -0.26066197047263473,
+        "return": 0.048753518604669255,
+        "sharpe": 0.9144754898621852,
+        "trades": 55,
+        "win_rate": 0.5272727272727272
+      },
+      "passed": true,
+      "rank": 5,
+      "reference": {
+        "calendar_returns": {
+          "30d": 0.2858148470985966,
+          "7d": 0.09796394036870981,
+          "90d": 0.4171611867467788
+        },
+        "oos": {
+          "max_drawdown": -0.091166859698674,
+          "return": 0.026862844399782704,
+          "sharpe": 0.7062041268364019,
+          "trades": 55,
+          "win_rate": 0.5272727272727272
+        }
+      },
+      "strategy": "donchian",
+      "timeframe": "4h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 12,
+            "selection_count": 1,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 12,
+            "selection_count": 1,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 12,
+            "selection_count": 1,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.4737047728006266,
+        "7d": -0.012615976569572473,
+        "90d": -0.8123419969418127
+      },
+      "cost_off": {
+        "max_drawdown": -0.5398029036333588,
+        "return": 0.9254069670039897,
+        "sharpe": 3.255803199528261,
+        "trades": 832,
+        "win_rate": 0.42427884615384615
+      },
+      "family": "cross_sectional_rotation",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 12,
+        "selection_count": 1,
+        "stop_atr": 2.0,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 2
+      },
+      "oos": {
+        "fold_returns": [
+          0.4240783176940599,
+          0.08251684136312365,
+          -0.5075522346016665
+        ],
+        "max_drawdown": -0.6841129264072559,
+        "return": -0.2408480588304205,
+        "sharpe": 0.4494652263414678,
+        "trades": 832,
+        "win_rate": 0.4074519230769231
+      },
+      "passed": false,
+      "rank": 6,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.14275065661804864,
+          "7d": 0.006181813162352112,
+          "90d": -0.352420524885265
+        },
+        "oos": {
+          "max_drawdown": -0.27819000514306846,
+          "return": -0.028978404485159426,
+          "sharpe": 0.12767058673506157,
+          "trades": 832,
+          "win_rate": 0.4074519230769231
+        }
+      },
+      "strategy": "cross_sectional_momentum",
+      "timeframe": "15m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 20
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 20
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": 0.22427610890378258,
+        "7d": -0.23893056840000126,
+        "90d": 0.2638047043870002
+      },
+      "cost_off": {
+        "max_drawdown": -0.43730323134904925,
+        "return": -0.06949874902196962,
+        "sharpe": 0.41370650758433164,
+        "trades": 83,
+        "win_rate": 0.4578313253012048
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "deviation_atr": 1.0,
+        "stop_atr": 2.0,
+        "take_profit_atr": 3.0,
+        "time_stop_bars": 24,
+        "vwap_window": 20
+      },
+      "neighbor": {
+        "positive": 2,
+        "robustness": 0.2857142857142857,
+        "total": 7
+      },
+      "oos": {
+        "fold_returns": [
+          -0.29882012065948593,
+          0.2453351288314627,
+          -0.042088044483038156
+        ],
+        "max_drawdown": -0.4548495458872781,
+        "return": -0.16354751070217521,
+        "sharpe": -0.11894960389866935,
+        "trades": 83,
+        "win_rate": 0.4578313253012048
+      },
+      "passed": false,
+      "rank": 7,
+      "reference": {
+        "calendar_returns": {
+          "30d": 0.08926278529026055,
+          "7d": -0.07389887393210248,
+          "90d": 0.13840256444800314
+        },
+        "oos": {
+          "max_drawdown": -0.16648339700564352,
+          "return": -0.03035678782852902,
+          "sharpe": -0.24674384670587524,
+          "trades": 83,
+          "win_rate": 0.4578313253012048
+        }
+      },
+      "strategy": "vwap_mean_reversion",
+      "timeframe": "4h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "threshold": 25.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "threshold": 25.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": 0.44338824062135584,
+        "7d": -0.388137047777503,
+        "90d": -0.3887666890598491
+      },
+      "cost_off": {
+        "max_drawdown": -0.44539026175878127,
+        "return": -0.0951868383047284,
+        "sharpe": 0.3237353669465534,
+        "trades": 74,
+        "win_rate": 0.4864864864864865
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "rsi_window": 14,
+        "stop_atr": 2.0,
+        "take_profit_atr": 3.0,
+        "threshold": 30.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 3,
+        "robustness": 0.42857142857142855,
+        "total": 7
+      },
+      "oos": {
+        "fold_returns": [
+          -0.30597116492871557,
+          0.2161247711197416,
+          -0.026653028614763152
+        ],
+        "max_drawdown": -0.4593646005826514,
+        "return": -0.17847018181807395,
+        "sharpe": -0.14960243555345343,
+        "trades": 74,
+        "win_rate": 0.47297297297297297
+      },
+      "passed": false,
+      "rank": 8,
+      "reference": {
+        "calendar_returns": {
+          "30d": 0.14756165831513912,
+          "7d": -0.12607804268674105,
+          "90d": -0.09870780645245092
+        },
+        "oos": {
+          "max_drawdown": -0.17006521221820747,
+          "return": -0.03848385491443751,
+          "sharpe": -0.35681124557860844,
+          "trades": 74,
+          "win_rate": 0.47297297297297297
+        }
+      },
+      "strategy": "rsi_mean_reversion",
+      "timeframe": "4h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "both",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 2.0,
+            "volume_window": 40
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "both",
+            "return_lookback": 1,
+            "return_threshold": 0.04,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 2.0,
+            "volume_window": 20
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "both",
+            "return_lookback": 1,
+            "return_threshold": 0.04,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 1.5,
+            "volume_window": 40
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.373851447730001,
+        "7d": 0.392054591436674,
+        "90d": 0.13440259480882366
+      },
+      "cost_off": {
+        "max_drawdown": -0.748849158924042,
+        "return": -0.2569956215216028,
+        "sharpe": -0.018599303781397247,
+        "trades": 100,
+        "win_rate": 0.48
+      },
+      "family": "extreme_reversal",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "direction": "both",
+        "return_lookback": 1,
+        "return_threshold": 0.04,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24,
+        "volume_multiplier": 1.5,
+        "volume_window": 40
+      },
+      "neighbor": {
+        "positive": 2,
+        "robustness": 0.2857142857142857,
+        "total": 7
+      },
+      "oos": {
+        "fold_returns": [
+          -0.05607232990960731,
+          -0.35679628399726715,
+          0.08462778810112792
+        ],
+        "max_drawdown": -0.7678592512141937,
+        "return": -0.34148148713950943,
+        "sharpe": -0.44608671555912066,
+        "trades": 100,
+        "win_rate": 0.47
+      },
+      "passed": false,
+      "rank": 9,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.08822422417535969,
+          "7d": 0.12491003383470711,
+          "90d": 0.13506287077322465
+        },
+        "oos": {
+          "max_drawdown": -0.33654934489461186,
+          "return": -0.05969112550872613,
+          "sharpe": -0.41015090258378367,
+          "trades": 100,
+          "win_rate": 0.47
+        }
+      },
+      "strategy": "extreme_reversal",
+      "timeframe": "1h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 10,
+            "cooldown_bars": 6,
+            "fast_window": 40,
+            "slow_window": 100,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 20,
+            "slow_window": 100,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 20,
+            "slow_window": 50,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.06657678463129169,
+        "7d": 0.19289544284255866,
+        "90d": -0.0678109733800003
+      },
+      "cost_off": {
+        "max_drawdown": -0.38761274076037755,
+        "return": -0.19296798371464385,
+        "sharpe": -0.29899290676800505,
+        "trades": 51,
+        "win_rate": 0.49019607843137253
+      },
+      "family": "regime_gated",
+      "latest_params": {
+        "atr_window": 14,
+        "breakout_lookback": 20,
+        "cooldown_bars": 6,
+        "fast_window": 20,
+        "slow_window": 50,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 2,
+        "robustness": 0.2857142857142857,
+        "total": 7
+      },
+      "oos": {
+        "fold_returns": [
+          -0.07150197699446581,
+          -0.2223416991349748,
+          0.06430774059334832
+        ],
+        "max_drawdown": -0.3908634543861216,
+        "return": -0.23151213121127545,
+        "sharpe": -0.5490229113719922,
+        "trades": 51,
+        "win_rate": 0.47058823529411764
+      },
+      "passed": false,
+      "rank": 10,
+      "reference": {
+        "calendar_returns": {
+          "30d": 0.015682465803318557,
+          "7d": 0.06114190258333774,
+          "90d": 0.03586173201851928
+        },
+        "oos": {
+          "max_drawdown": -0.13658850494539942,
+          "return": -0.036933181471454635,
+          "sharpe": -0.33621305779425154,
+          "trades": 51,
+          "win_rate": 0.47058823529411764
+        }
+      },
+      "strategy": "regime_gated",
+      "timeframe": "4h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 1.5,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 2.0,
+            "cooldown_bars": 6,
+            "ema_window": 40,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 1.5,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.5967846202418753,
+        "7d": 0.2110508027260629,
+        "90d": 0.003186718915668907
+      },
+      "cost_off": {
+        "max_drawdown": -0.6616241640829779,
+        "return": -0.2669298438356308,
+        "sharpe": -0.4633181618902038,
+        "trades": 71,
+        "win_rate": 0.39436619718309857
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "band_atr": 1.5,
+        "cooldown_bars": 6,
+        "ema_window": 20,
+        "stop_atr": 2.0,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 1,
+        "robustness": 0.25,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          0.5073955176823066,
+          -0.43609104999422643,
+          -0.19918335505395224
+        ],
+        "max_drawdown": -0.6744959139577896,
+        "return": -0.31927876527826016,
+        "sharpe": -0.789532707316471,
+        "trades": 71,
+        "win_rate": 0.38028169014084506
+      },
+      "passed": false,
+      "rank": 11,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.2211294855759658,
+          "7d": 0.0653451842673467,
+          "90d": 0.08473858655685929
+        },
+        "oos": {
+          "max_drawdown": -0.28630386873479263,
+          "return": -0.08925773571829188,
+          "sharpe": -1.0778411982062017,
+          "trades": 71,
+          "win_rate": 0.38028169014084506
+        }
+      },
+      "strategy": "keltner",
+      "timeframe": "4h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 20,
+            "slow_window": 50,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 20,
+            "slow_window": 50,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 40,
+            "slow_window": 100,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.11697937058132724,
+        "7d": -0.10253889437148656,
+        "90d": -0.4836661650275391
+      },
+      "cost_off": {
+        "max_drawdown": -0.549043574615234,
+        "return": -0.13754500295026562,
+        "sharpe": -0.030394905866549304,
+        "trades": 179,
+        "win_rate": 0.46368715083798884
+      },
+      "family": "regime_gated",
+      "latest_params": {
+        "atr_window": 14,
+        "breakout_lookback": 20,
+        "cooldown_bars": 6,
+        "fast_window": 40,
+        "slow_window": 100,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          0.25994963978828634,
+          -0.2355553937647522,
+          -0.2634082164543293
+        ],
+        "max_drawdown": -0.5988948226930908,
+        "return": -0.29054300093996244,
+        "sharpe": -1.084243208511979,
+        "trades": 179,
+        "win_rate": 0.45251396648044695
+      },
+      "passed": false,
+      "rank": 12,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.022813153697525235,
+          "7d": -0.027715869098764223,
+          "90d": -0.15299498876929485
+        },
+        "oos": {
+          "max_drawdown": -0.237371849277782,
+          "return": -0.0788134669184758,
+          "sharpe": -1.1565526551611183,
+          "trades": 179,
+          "win_rate": 0.45251396648044695
+        }
+      },
+      "strategy": "regime_gated",
+      "timeframe": "1h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 10,
+            "cooldown_bars": 6,
+            "fast_window": 20,
+            "slow_window": 50,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 40,
+            "slow_window": 100,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 40,
+            "slow_window": 100,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.34681877324234245,
+        "7d": -0.002477266229123365,
+        "90d": -0.6782802502910943
+      },
+      "cost_off": {
+        "max_drawdown": -0.3078565840236587,
+        "return": 0.15627888438409143,
+        "sharpe": 1.4606829405215387,
+        "trades": 706,
+        "win_rate": 0.48583569405099153
+      },
+      "family": "regime_gated",
+      "latest_params": {
+        "atr_window": 14,
+        "breakout_lookback": 20,
+        "cooldown_bars": 6,
+        "fast_window": 40,
+        "slow_window": 100,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 6
+      },
+      "oos": {
+        "fold_returns": [
+          -0.26141226576975063,
+          -0.2423470205963787,
+          -0.06452392757292158
+        ],
+        "max_drawdown": -0.5745158048614243,
+        "return": -0.4765139535482069,
+        "sharpe": -2.006521790264172,
+        "trades": 706,
+        "win_rate": 0.43626062322946174
+      },
+      "passed": false,
+      "rank": 13,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.09951005370201282,
+          "7d": 0.0058437610612702695,
+          "90d": -0.2592987827497808
+        },
+        "oos": {
+          "max_drawdown": -0.2192980976060882,
+          "return": -0.1549245703565204,
+          "sharpe": -2.1578799995112643,
+          "trades": 706,
+          "win_rate": 0.43626062322946174
+        }
+      },
+      "strategy": "regime_gated",
+      "timeframe": "15m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 20
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.5,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.5,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.25340097378057025,
+        "7d": -0.07108478761702097,
+        "90d": -0.227302581837456
+      },
+      "cost_off": {
+        "max_drawdown": -0.5053993644846064,
+        "return": -0.31232494234086794,
+        "sharpe": -1.0979891541419675,
+        "trades": 218,
+        "win_rate": 0.5412844036697247
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "deviation_atr": 1.5,
+        "stop_atr": 3.5,
+        "take_profit_atr": 3.0,
+        "time_stop_bars": 24,
+        "vwap_window": 40
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          -0.1296219508435752,
+          -0.3320773412277739,
+          -0.07080086962588805
+        ],
+        "max_drawdown": -0.5884445469039998,
+        "return": -0.4598145264509629,
+        "sharpe": -2.316826051074294,
+        "trades": 218,
+        "win_rate": 0.518348623853211
+      },
+      "passed": false,
+      "rank": 14,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.06371358247782599,
+          "7d": -0.018911635402625082,
+          "90d": -0.02127180937695128
+        },
+        "oos": {
+          "max_drawdown": -0.22178316224995398,
+          "return": -0.14934068274370005,
+          "sharpe": -2.4126269540826675,
+          "trades": 218,
+          "win_rate": 0.518348623853211
+        }
+      },
+      "strategy": "vwap_mean_reversion",
+      "timeframe": "1h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 2.0,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 2.0,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 2.0,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.43977146610244033,
+        "7d": -0.05774574224953055,
+        "90d": -0.2621426717460509
+      },
+      "cost_off": {
+        "max_drawdown": -0.4947888966784111,
+        "return": -0.3323395805946471,
+        "sharpe": -1.6209756801785837,
+        "trades": 189,
+        "win_rate": 0.4444444444444444
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "band_atr": 2.0,
+        "cooldown_bars": 6,
+        "ema_window": 20,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 1,
+        "robustness": 0.3333333333333333,
+        "total": 3
+      },
+      "oos": {
+        "fold_returns": [
+          -0.02077074741793883,
+          -0.040129702395293454,
+          -0.4193607970051244
+        ],
+        "max_drawdown": -0.5544014470160845,
+        "return": -0.45423800898653033,
+        "sharpe": -2.8048521281549132,
+        "trades": 189,
+        "win_rate": 0.43386243386243384
+      },
+      "passed": false,
+      "rank": 15,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.14878704357173334,
+          "7d": -0.014120785829953575,
+          "90d": -0.04243338002395747
+        },
+        "oos": {
+          "max_drawdown": -0.2090222650108211,
+          "return": -0.15021068168890095,
+          "sharpe": -2.8196045164914234,
+          "trades": 189,
+          "win_rate": 0.43386243386243384
+        }
+      },
+      "strategy": "keltner",
+      "timeframe": "1h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 1.5,
+            "cooldown_bars": 6,
+            "ema_window": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 2.0,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 2.0,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.5016389098057765,
+        "7d": -0.13883519396515942,
+        "90d": -0.8553991447256972
+      },
+      "cost_off": {
+        "max_drawdown": -0.35548194229261587,
+        "return": 0.13925446313215217,
+        "sharpe": 1.4210557562629043,
+        "trades": 778,
+        "win_rate": 0.4897172236503856
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "band_atr": 2.0,
+        "cooldown_bars": 6,
+        "ema_window": 20,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          -0.07734921212935031,
+          -0.17165942605405216,
+          -0.3782954793321446
+        ],
+        "max_drawdown": -0.5890931150505336,
+        "return": -0.5248504559825208,
+        "sharpe": -3.3428147305619818,
+        "trades": 778,
+        "win_rate": 0.44087403598971725
+      },
+      "passed": false,
+      "rank": 16,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.17486567597551683,
+          "7d": -0.03926050505489376,
+          "90d": -0.4237145605931023
+        },
+        "oos": {
+          "max_drawdown": -0.22026354535992831,
+          "return": -0.18093499971600924,
+          "sharpe": -3.281747996447736,
+          "trades": 778,
+          "win_rate": 0.44087403598971725
+        }
+      },
+      "strategy": "keltner",
+      "timeframe": "15m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 20,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 20,
+            "stop_atr": 2.0,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.18259094900885886,
+        "7d": -0.03671406988962145,
+        "90d": 0.027652494492136803
+      },
+      "cost_off": {
+        "max_drawdown": -0.6503897755710497,
+        "return": -0.3944132190122551,
+        "sharpe": -2.3284440728235083,
+        "trades": 235,
+        "win_rate": 0.42127659574468085
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 20,
+        "stop_atr": 2.0,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 2,
+        "robustness": 0.3333333333333333,
+        "total": 6
+      },
+      "oos": {
+        "fold_returns": [
+          0.15939358226496725,
+          -0.0977709138198467,
+          -0.5530659524659808
+        ],
+        "max_drawdown": -0.7024452220541003,
+        "return": -0.5324897291502141,
+        "sharpe": -3.8537582281108107,
+        "trades": 235,
+        "win_rate": 0.4127659574468085
+      },
+      "passed": false,
+      "rank": 17,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.032854684341006024,
+          "7d": -0.003607945238617294,
+          "90d": 0.07507993990582373
+        },
+        "oos": {
+          "max_drawdown": -0.3041735909680179,
+          "return": -0.1904335404100007,
+          "sharpe": -3.820642411399628,
+          "trades": 235,
+          "win_rate": 0.4127659574468085
+        }
+      },
+      "strategy": "donchian",
+      "timeframe": "1h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.5399993913832493,
+        "7d": -0.08991363252240026,
+        "90d": -0.9073875412900437
+      },
+      "cost_off": {
+        "max_drawdown": -0.5850910565017218,
+        "return": -0.15138924924068764,
+        "sharpe": 0.013920417372882625,
+        "trades": 761,
+        "win_rate": 0.4940867279894875
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 20,
+        "stop_atr": 3.5,
+        "take_profit_atr": 3.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          -0.013334668374249903,
+          -0.29658956510466483,
+          -0.48081143067955645
+        ],
+        "max_drawdown": -0.7614135317563218,
+        "return": -0.639667198986622,
+        "sharpe": -4.135793606563274,
+        "trades": 761,
+        "win_rate": 0.46254927726675427
+      },
+      "passed": false,
+      "rank": 18,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.1986353940038793,
+          "7d": -0.023024181859332304,
+          "90d": -0.5012180584312991
+        },
+        "oos": {
+          "max_drawdown": -0.34387533038255336,
+          "return": -0.25198573266100477,
+          "sharpe": -4.272532532655305,
+          "trades": 761,
+          "win_rate": 0.46254927726675427
+        }
+      },
+      "strategy": "donchian",
+      "timeframe": "15m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.5446554891682195,
+        "7d": -0.035925708901075715,
+        "90d": -0.618927684074051
+      },
+      "cost_off": {
+        "max_drawdown": -0.51650853943021,
+        "return": -0.4514910972454266,
+        "sharpe": -3.070719219928107,
+        "trades": 272,
+        "win_rate": 0.4227941176470588
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "rsi_window": 14,
+        "stop_atr": 2.0,
+        "take_profit_atr": 3.0,
+        "threshold": 30.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 2,
+        "robustness": 0.3333333333333333,
+        "total": 6
+      },
+      "oos": {
+        "fold_returns": [
+          -0.13339478047038011,
+          -0.2853750849850468,
+          -0.35521103935753784
+        ],
+        "max_drawdown": -0.6450565213340849,
+        "return": -0.6006836917089726,
+        "sharpe": -4.965204314315438,
+        "trades": 272,
+        "win_rate": 0.4117647058823529
+      },
+      "passed": false,
+      "rank": 19,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.2009041501660337,
+          "7d": -0.0056231275601899,
+          "90d": -0.22665304717676094
+        },
+        "oos": {
+          "max_drawdown": -0.2619218044133719,
+          "return": -0.23400680116560169,
+          "sharpe": -4.972605209194007,
+          "trades": 272,
+          "win_rate": 0.4117647058823529
+        }
+      },
+      "strategy": "rsi_mean_reversion",
+      "timeframe": "1h"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "both",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 2.0,
+            "volume_window": 20
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "short",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 1.5,
+            "volume_window": 40
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "direction": "short",
+            "return_lookback": 1,
+            "return_threshold": 0.02,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24,
+            "volume_multiplier": 1.5,
+            "volume_window": 40
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.2532444892737107,
+        "7d": 0.11323069595260238,
+        "90d": -0.39898687944712263
+      },
+      "cost_off": {
+        "max_drawdown": -0.5492106037861109,
+        "return": -0.487401762491124,
+        "sharpe": -4.5960296246812415,
+        "trades": 181,
+        "win_rate": 0.425414364640884
+      },
+      "family": "extreme_reversal",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "direction": "short",
+        "return_lookback": 1,
+        "return_threshold": 0.02,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24,
+        "volume_multiplier": 1.5,
+        "volume_window": 40
+      },
+      "neighbor": {
+        "positive": 1,
+        "robustness": 0.125,
+        "total": 8
+      },
+      "oos": {
+        "fold_returns": [
+          -0.3885489954875303,
+          -0.2806367294204515,
+          -0.051479022278729136
+        ],
+        "max_drawdown": -0.6095411056970576,
+        "return": -0.5827879312427662,
+        "sharpe": -6.241943457974129,
+        "trades": 181,
+        "win_rate": 0.4143646408839779
+      },
+      "passed": false,
+      "rank": 20,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.06578033682437567,
+          "7d": 0.038710159496776475,
+          "90d": -0.11089343045838351
+        },
+        "oos": {
+          "max_drawdown": -0.23688336641259533,
+          "return": -0.21455074738663393,
+          "sharpe": -5.809401535991851,
+          "trades": 181,
+          "win_rate": 0.4143646408839779
+        }
+      },
+      "strategy": "extreme_reversal",
+      "timeframe": "15m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 7,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "threshold": 25.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "threshold": 25.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.6513778580653105,
+        "7d": -0.13293418256341538,
+        "90d": -0.9313404216351489
+      },
+      "cost_off": {
+        "max_drawdown": -0.6572128841178573,
+        "return": -0.595354399144342,
+        "sharpe": -3.9974728866572766,
+        "trades": 928,
+        "win_rate": 0.4709051724137931
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "rsi_window": 14,
+        "stop_atr": 2.0,
+        "take_profit_atr": 3.0,
+        "threshold": 25.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          -0.5306840691671344,
+          -0.35702188496465537,
+          -0.5239167085571317
+        ],
+        "max_drawdown": -0.873485617860201,
+        "return": -0.8563371666448388,
+        "sharpe": -9.395855339456583,
+        "trades": 928,
+        "win_rate": 0.42780172413793105
+      },
+      "passed": false,
+      "rank": 21,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.2617203466274908,
+          "7d": -0.03864942897081258,
+          "90d": -0.5448798562599653
+        },
+        "oos": {
+          "max_drawdown": -0.4591328823995554,
+          "return": -0.4369931111200688,
+          "sharpe": -9.270457017653854,
+          "trades": 928,
+          "win_rate": 0.42780172413793105
+        }
+      },
+      "strategy": "rsi_mean_reversion",
+      "timeframe": "15m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 2.0,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.7148851975620227,
+        "7d": -0.29374576837464283,
+        "90d": -0.9322108885315761
+      },
+      "cost_off": {
+        "max_drawdown": -0.7102320529130526,
+        "return": -0.6741938546556099,
+        "sharpe": -4.861700652620247,
+        "trades": 1001,
+        "win_rate": 0.45054945054945056
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "deviation_atr": 1.0,
+        "stop_atr": 3.5,
+        "take_profit_atr": 3.0,
+        "time_stop_bars": 24,
+        "vwap_window": 40
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 6
+      },
+      "oos": {
+        "fold_returns": [
+          -0.6547578490789456,
+          -0.5006103987871215,
+          -0.3861889977288788
+        ],
+        "max_drawdown": -0.9002830921282391,
+        "return": -0.8941726363595187,
+        "sharpe": -10.47969765837147,
+        "trades": 1001,
+        "win_rate": 0.39760239760239763
+      },
+      "passed": false,
+      "rank": 22,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.3043105456358852,
+          "7d": -0.09717307961556854,
+          "90d": -0.5450534262564795
+        },
+        "oos": {
+          "max_drawdown": -0.49657082694080057,
+          "return": -0.4868335241003793,
+          "sharpe": -10.354079041056346,
+          "trades": 1001,
+          "win_rate": 0.39760239760239763
+        }
+      },
+      "strategy": "vwap_mean_reversion",
+      "timeframe": "15m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 24,
+            "selection_count": 1,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 24,
+            "selection_count": 1,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 24,
+            "selection_count": 1,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.8895961620884075,
+        "7d": -0.6010640207486159,
+        "90d": -0.9994958204351317
+      },
+      "cost_off": {
+        "max_drawdown": -0.5282277980657909,
+        "return": 1.3460482129871796,
+        "sharpe": 4.564085990112766,
+        "trades": 3206,
+        "win_rate": 0.5040548970679976
+      },
+      "family": "cross_sectional_rotation",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 24,
+        "selection_count": 1,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 2
+      },
+      "oos": {
+        "fold_returns": [
+          -0.5366046547518019,
+          -0.5460132409183394,
+          -0.6965429837285115
+        ],
+        "max_drawdown": -0.9462427366605121,
+        "return": -0.9361601236997746,
+        "sharpe": -11.009430877267338,
+        "trades": 3206,
+        "win_rate": 0.4488459139114161
+      },
+      "passed": false,
+      "rank": 23,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.4672378899805887,
+          "7d": -0.23754293461828957,
+          "90d": -0.896592781678206
+        },
+        "oos": {
+          "max_drawdown": -0.5715181182281226,
+          "return": -0.5474564711267125,
+          "sharpe": -10.201170641494297,
+          "trades": 3206,
+          "win_rate": 0.4488459139114161
+        }
+      },
+      "strategy": "cross_sectional_momentum",
+      "timeframe": "3m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 2.0,
+            "cooldown_bars": 6,
+            "ema_window": 20,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 1.5,
+            "cooldown_bars": 6,
+            "ema_window": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "band_atr": 1.5,
+            "cooldown_bars": 6,
+            "ema_window": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.9389099675649274,
+        "7d": -0.5566756398822005,
+        "90d": -0.999896298771098
+      },
+      "cost_off": {
+        "max_drawdown": -0.37846145832790334,
+        "return": 0.6656936007927274,
+        "sharpe": 3.230408749933301,
+        "trades": 4134,
+        "win_rate": 0.4741170778906628
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "band_atr": 1.5,
+        "cooldown_bars": 6,
+        "ema_window": 40,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          -0.7898629012162681,
+          -0.7310726820749209,
+          -0.7177383301476055
+        ],
+        "max_drawdown": -0.9847559629075493,
+        "return": -0.9840489396192664,
+        "sharpe": -18.820447292609824,
+        "trades": 4134,
+        "win_rate": 0.3514755684567005
+      },
+      "passed": false,
+      "rank": 24,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.5704981905677762,
+          "7d": -0.2162633520448043,
+          "90d": -0.9397520913515067
+        },
+        "oos": {
+          "max_drawdown": -0.7209996718609055,
+          "return": -0.7165455693530665,
+          "sharpe": -18.25776062151845,
+          "trades": 4134,
+          "win_rate": 0.3514755684567005
+        }
+      },
+      "strategy": "keltner",
+      "timeframe": "3m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.5,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 40
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "deviation_atr": 1.0,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "time_stop_bars": 24,
+            "vwap_window": 20
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.9368973582079565,
+        "7d": -0.4236086117984581,
+        "90d": -0.9999711711735649
+      },
+      "cost_off": {
+        "max_drawdown": -0.469157577473727,
+        "return": 0.10448032074042035,
+        "sharpe": 1.2928670034292993,
+        "trades": 4721,
+        "win_rate": 0.5231942385087905
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "deviation_atr": 1.0,
+        "stop_atr": 3.5,
+        "take_profit_atr": 3.0,
+        "time_stop_bars": 24,
+        "vwap_window": 20
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 7
+      },
+      "oos": {
+        "fold_returns": [
+          -0.8464679244588116,
+          -0.8600877420669752,
+          -0.7399916385807591
+        ],
+        "max_drawdown": -0.9944606183392078,
+        "return": -0.9944147553561224,
+        "sharpe": -20.2198728659116,
+        "trades": 4721,
+        "win_rate": 0.3687778013132811
+      },
+      "passed": false,
+      "rank": 25,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.5667693449497093,
+          "7d": -0.14874714042735138,
+          "90d": -0.9597583055468
+        },
+        "oos": {
+          "max_drawdown": -0.7962030172599066,
+          "return": -0.7956765613256145,
+          "sharpe": -20.655047598930178,
+          "trades": 4721,
+          "win_rate": 0.3687778013132811
+        }
+      },
+      "strategy": "vwap_mean_reversion",
+      "timeframe": "3m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "lookback": 40,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.9382742207763174,
+        "7d": -0.47316845265619767,
+        "90d": -0.9999016244971338
+      },
+      "cost_off": {
+        "max_drawdown": -0.41495447047835754,
+        "return": 0.1020412595112754,
+        "sharpe": 1.273521020370928,
+        "trades": 3705,
+        "win_rate": 0.4647773279352227
+      },
+      "family": "trend_breakout",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "lookback": 40,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 3
+      },
+      "oos": {
+        "fold_returns": [
+          -0.7894317321496239,
+          -0.7728062331320245,
+          -0.6434278887871485
+        ],
+        "max_drawdown": -0.9843420011194051,
+        "return": -0.982941662242907,
+        "sharpe": -21.192921989687438,
+        "trades": 3705,
+        "win_rate": 0.36140350877192984
+      },
+      "passed": false,
+      "rank": 26,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.5714616387860263,
+          "7d": -0.17604935811499134,
+          "90d": -0.9410779971603606
+        },
+        "oos": {
+          "max_drawdown": -0.7197057860654467,
+          "return": -0.7117785681156186,
+          "sharpe": -20.54135285869727,
+          "trades": 3705,
+          "win_rate": 0.36140350877192984
+        }
+      },
+      "strategy": "donchian",
+      "timeframe": "3m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 10,
+            "cooldown_bars": 6,
+            "fast_window": 40,
+            "slow_window": 100,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 10,
+            "cooldown_bars": 6,
+            "fast_window": 40,
+            "slow_window": 100,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "breakout_lookback": 20,
+            "cooldown_bars": 6,
+            "fast_window": 40,
+            "slow_window": 50,
+            "stop_atr": 3.5,
+            "take_profit_atr": 4.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.9214195062637436,
+        "7d": -0.5365347906027343,
+        "90d": -0.9998152308350193
+      },
+      "cost_off": {
+        "max_drawdown": -0.28222407733448873,
+        "return": 1.066662526493956,
+        "sharpe": 5.216641014500481,
+        "trades": 3739,
+        "win_rate": 0.479005081572613
+      },
+      "family": "regime_gated",
+      "latest_params": {
+        "atr_window": 14,
+        "breakout_lookback": 20,
+        "cooldown_bars": 6,
+        "fast_window": 40,
+        "slow_window": 50,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 4
+      },
+      "oos": {
+        "fold_returns": [
+          -0.7110470612611314,
+          -0.6390811204103267,
+          -0.7036912336069088
+        ],
+        "max_drawdown": -0.9716917772545035,
+        "return": -0.9690983822066037,
+        "sharpe": -21.720372693911052,
+        "trades": 3739,
+        "win_rate": 0.3738967638405991
+      },
+      "passed": false,
+      "rank": 27,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.5377812587166912,
+          "7d": -0.20720573978059842,
+          "90d": -0.9283180700692018
+        },
+        "oos": {
+          "max_drawdown": -0.6628390569693217,
+          "return": -0.6530284724110471,
+          "sharpe": -21.112469433768577,
+          "trades": 3739,
+          "win_rate": 0.3738967638405991
+        }
+      },
+      "strategy": "regime_gated",
+      "timeframe": "3m"
+    },
+    {
+      "adaptive_params": [
+        {
+          "fold": 0,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 1,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 14,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        },
+        {
+          "fold": 2,
+          "params": {
+            "atr_window": 14,
+            "cooldown_bars": 6,
+            "rsi_window": 7,
+            "stop_atr": 3.5,
+            "take_profit_atr": 3.0,
+            "threshold": 30.0,
+            "time_stop_bars": 24
+          }
+        }
+      ],
+      "calendar_returns": {
+        "30d": -0.9649791934718871,
+        "7d": -0.5293581666397009,
+        "90d": -0.999964004231845
+      },
+      "cost_off": {
+        "max_drawdown": -0.4239841592673316,
+        "return": -0.22199942756165103,
+        "sharpe": -0.741287975431315,
+        "trades": 4475,
+        "win_rate": 0.5211173184357542
+      },
+      "family": "mean_reversion",
+      "latest_params": {
+        "atr_window": 14,
+        "cooldown_bars": 6,
+        "rsi_window": 7,
+        "stop_atr": 3.5,
+        "take_profit_atr": 3.0,
+        "threshold": 30.0,
+        "time_stop_bars": 24
+      },
+      "neighbor": {
+        "positive": 0,
+        "robustness": 0.0,
+        "total": 6
+      },
+      "oos": {
+        "fold_returns": [
+          -0.8507723566025183,
+          -0.7594767226153263,
+          -0.8567647671532486
+        ],
+        "max_drawdown": -0.9949249178442517,
+        "return": -0.9948588976259691,
+        "sharpe": -30.40158879463299,
+        "trades": 4475,
+        "win_rate": 0.3937430167597765
+      },
+      "passed": false,
+      "rank": 28,
+      "reference": {
+        "calendar_returns": {
+          "30d": -0.6402600902934914,
+          "7d": -0.2050293317949593,
+          "90d": -0.956959088775803
+        },
+        "oos": {
+          "max_drawdown": -0.8021243947957845,
+          "return": -0.8013012175304361,
+          "sharpe": -29.24990026444554,
+          "trades": 4475,
+          "win_rate": 0.3937430167597765
+        }
+      },
+      "strategy": "rsi_mean_reversion",
+      "timeframe": "3m"
+    }
+  ],
+  "data": {
+    "coverage": "20 instruments; 90-91 complete UTC days; missing source bars were not forward-filled",
+    "metadata_generated_at": "2026-11-18T13:19:56.205160+00:00",
+    "requested_end": "2026-11-16",
+    "requested_start": "2026-08-18",
+    "source": "OKX public tickers, instruments, daily archives, and funding API",
+    "timeframes": [
+      "3m",
+      "15m",
+      "1h",
+      "4h"
+    ],
+    "universe": [
+      "SOXL-USDT-SWAP",
+      "SNDK-USDT-SWAP",
+      "ZEC-USDT-SWAP",
+      "NVDA-USDT-SWAP",
+      "XAU-USDT-SWAP",
+      "MMT-USDT-SWAP",
+      "SKHYNIX-USDT-SWAP",
+      "MU-USDT-SWAP",
+      "XRP-USDT-SWAP",
+      "BREV-USDT-SWAP",
+      "SOXS-USDT-SWAP",
+      "KORU-USDT-SWAP",
+      "HYPE-USDT-SWAP",
+      "DOGE-USDT-SWAP",
+      "PEPE-USDT-SWAP",
+      "XAG-USDT-SWAP",
+      "SPCX-USDT-SWAP",
+      "BTC-USDT-SWAP",
+      "ETH-USDT-SWAP",
+      "SOL-USDT-SWAP"
+    ]
+  },
+  "generated_at": "2026-11-18T14:35:21.251729+00:00",
+  "passing_count": 2,
+  "research": {
+    "calendar_window_definition": "last complete UTC calendar days; latest fold exact params; continuous cached history for indicators; flat at window start",
+    "calendar_window_end": "2026-11-17T00:00:00+00:00",
+    "checkpoint": "data/okx_cost_aware/research_checkpoint.json",
+    "cost_model": {
+      "cost_off": "fee=0, slippage=0, funding removed",
+      "fee_per_side": 0.0005,
+      "funding": "realized OKX funding at the published timestamp",
+      "signal_lag_bars": 1,
+      "slippage_per_side": 0.0002
+    },
+    "elapsed_seconds": 955.431817,
+    "folds": [
+      {
+        "fold": 0,
+        "is_end": "2026-10-02T00:00:00+00:00",
+        "is_start": "2026-08-18T00:00:00+00:00",
+        "oos_end": "2026-10-17T00:00:00+00:00",
+        "oos_start": "2026-10-02T00:00:00+00:00"
+      },
+      {
+        "fold": 1,
+        "is_end": "2026-10-17T00:00:00+00:00",
+        "is_start": "2026-09-02T00:00:00+00:00",
+        "oos_end": "2026-11-01T00:00:00+00:00",
+        "oos_start": "2026-10-17T00:00:00+00:00"
+      },
+      {
+        "fold": 2,
+        "is_end": "2026-11-01T00:00:00+00:00",
+        "is_start": "2026-09-17T00:00:00+00:00",
+        "oos_end": "2026-11-16T00:00:00+00:00",
+        "oos_start": "2026-11-01T00:00:00+00:00"
+      }
+    ],
+    "neighbor_rule": "unique legal one-step grid neighbors; positive compounded OOS return divided by all unique neighbors, with invalid, flat, and losing neighbors nonpositive",
+    "passing_gates": {
+      "maximum_drawdown_floor": -0.3,
+      "minimum_neighbor_robustness": 0.7,
+      "minimum_oos_trades": 30,
+      "positive_oos_folds": "strict majority: at least 2 of exactly 3"
+    },
+    "primary_sizing": {
+      "initial_equity": 100000.0,
+      "leverage": 8.0,
+      "margin_fraction": 0.1,
+      "max_positions": 3
+    },
+    "ranking": "OOS daily Sharpe descending, then OOS return descending",
+    "reference_sizing": {
+      "initial_equity": 100000.0,
+      "leverage": 5.0,
+      "margin_fraction": 0.05,
+      "max_positions": 3
+    },
+    "search_counts": {
+      "actual_backtests": 1398,
+      "backtest_cache_hits": 0,
+      "family_timeframe_candidates": 28,
+      "grid_configurations": 240,
+      "grid_sizes": {
+        "cross_sectional_momentum": 4,
+        "donchian": 8,
+        "extreme_reversal": 16,
+        "keltner": 8,
+        "regime_gated": 8,
+        "rsi_mean_reversion": 8,
+        "vwap_mean_reversion": 8
+      },
+      "is_fold_evaluations": 720,
+      "signal_generations": 241,
+      "strategies": 7,
+      "timeframes": 4
+    }
+  },
+  "schema_version": 1,
+  "status": "complete",
+  "warnings": [
+    "Multiple testing across complete bounded grids can overstate apparent robustness; no multiplicity correction was applied.",
+    "The selected universe reflects one current liquidity snapshot and may introduce survivorship and selection bias.",
+    "Ninety days and three OOS folds are limited evidence; regime changes, latency, liquidity, and liquidation are not modeled.",
+    "Research results are not evidence that a strategy is ready for live trading; independent validation and paper trading are required."
+  ]
+}

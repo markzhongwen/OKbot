@@ -56,6 +56,17 @@ class BacktestResult:
     equity_events: tuple[EquityEvent, ...]
 
 
+@dataclass(frozen=True)
+class PreparedCandles:
+    """Reusable deterministic indexes for one immutable candle window."""
+
+    bars: tuple[Row, ...]
+    bars_by_symbol: Mapping[str, tuple[Row, ...]]
+    bar_indexes: Mapping[tuple[str, object], int]
+    bars_by_event: Mapping[object, tuple[tuple[int, Row], ...]]
+    event_times: tuple[object, ...]
+
+
 @dataclass
 class _Position:
     symbol: str
@@ -109,8 +120,40 @@ def _open_exit_event(position: _Position, bar: Row) -> tuple[float, str] | None:
     return None
 
 
+def prepare_candles(candles: Iterable[Row] | PreparedCandles) -> PreparedCandles:
+    """Build candle indexes once for reuse across parameter backtests."""
+    if isinstance(candles, PreparedCandles):
+        return candles
+    bars = tuple(candles)
+    grouped: dict[str, list[Row]] = {}
+    for bar in bars:
+        grouped.setdefault(str(bar["symbol"]), []).append(bar)
+    bars_by_symbol: dict[str, tuple[Row, ...]] = {}
+    bar_indexes: dict[tuple[str, object], int] = {}
+    for symbol, symbol_bars in grouped.items():
+        symbol_bars.sort(key=lambda row: row["timestamp"])
+        bars_by_symbol[symbol] = tuple(symbol_bars)
+        for index, bar in enumerate(symbol_bars):
+            bar_indexes[(symbol, bar["timestamp"])] = index
+
+    grouped_events: dict[object, list[tuple[int, Row]]] = {}
+    for sequence, bar in enumerate(bars):
+        grouped_events.setdefault(bar["timestamp"], []).append((sequence, bar))
+    bars_by_event = {
+        timestamp: tuple(event_bars)
+        for timestamp, event_bars in grouped_events.items()
+    }
+    return PreparedCandles(
+        bars=bars,
+        bars_by_symbol=bars_by_symbol,
+        bar_indexes=bar_indexes,
+        bars_by_event=bars_by_event,
+        event_times=tuple(sorted(bars_by_event)),
+    )
+
+
 def run_backtest(
-    candles: Iterable[Row],
+    candles: Iterable[Row] | PreparedCandles,
     signals: Iterable[Row],
     funding: Iterable[Row],
     execution: ExecutionConfig,
@@ -133,7 +176,7 @@ def run_backtest(
 
 
 def run_backtest_result(
-    candles: Iterable[Row],
+    candles: Iterable[Row] | PreparedCandles,
     signals: Iterable[Row],
     funding: Iterable[Row],
     execution: ExecutionConfig,
@@ -180,7 +223,7 @@ def run_backtest_result(
 
 
 def _run_backtest_impl(
-    candles: Iterable[Row],
+    candles: Iterable[Row] | PreparedCandles,
     signals: Iterable[Row],
     funding: Iterable[Row],
     execution: ExecutionConfig,
@@ -192,15 +235,9 @@ def _run_backtest_impl(
     force_close_at_end: bool,
 ) -> BacktestResult:
     """Run deterministic fill, cost, funding, and mark events."""
-    bars = list(candles)
-    bars_by_symbol: dict[str, list[Row]] = {}
-    for bar in bars:
-        bars_by_symbol.setdefault(str(bar["symbol"]), []).append(bar)
-    bar_indexes: dict[tuple[str, object], int] = {}
-    for symbol, symbol_bars in bars_by_symbol.items():
-        symbol_bars.sort(key=lambda row: row["timestamp"])
-        for index, bar in enumerate(symbol_bars):
-            bar_indexes[(symbol, bar["timestamp"])] = index
+    prepared = prepare_candles(candles)
+    bars_by_symbol = prepared.bars_by_symbol
+    bar_indexes = prepared.bar_indexes
 
     entries: dict[tuple[object, str], list[Row]] = {}
     for signal in signals:
@@ -215,16 +252,14 @@ def _run_backtest_impl(
             entries.setdefault((entry_time, symbol), []).append(signal)
 
     funding_by_event: dict[object, list[tuple[str, float]]] = {}
-    event_times = {bar["timestamp"] for bar in bars}
+    event_times = set(prepared.event_times)
     for payment in funding:
         funding_by_event.setdefault(payment["timestamp"], []).append(
             (str(payment["symbol"]), float(payment["rate"]))
         )
         event_times.add(payment["timestamp"])
 
-    bars_by_event: dict[object, list[tuple[int, Row]]] = {}
-    for sequence, bar in enumerate(bars):
-        bars_by_event.setdefault(bar["timestamp"], []).append((sequence, bar))
+    bars_by_event = prepared.bars_by_event
 
     positions: dict[str, _Position] = {}
     last_exit_indexes: dict[str, int] = {}
