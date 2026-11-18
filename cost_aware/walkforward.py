@@ -2,9 +2,9 @@
 
 The backtest callback is deliberately independent of data loading.  It receives
 ``(params, fold, sizing, phase)`` where phase is ``"is"`` or ``"oos"``, and
-returns ``(event_equity, trades)``.  Equity must contain the actual event-time
-account value, including values at both window boundaries; metrics are never
-rebuilt from exit-day trade PnL.
+returns either ``BacktestResult`` or ``(event_equity, trades)``.  Equity must
+contain the actual event-time account value, including values at both window
+boundaries; metrics are never rebuilt from exit-day trade PnL.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import pandas as pd
 
 Params = Mapping[str, object]
 Phase = Literal["is", "oos"]
-BacktestOutput = tuple[pd.Series, Sequence[object]]
+BacktestOutput = tuple[object, Sequence[object]]
 BacktestCallback = Callable[
     [Params, "Fold", object, Phase],
     BacktestOutput | None,
@@ -132,6 +132,8 @@ def build_folds(
         origin = origin.tz_localize("UTC")
     else:
         origin = origin.tz_convert("UTC")
+    if origin != origin.normalize():
+        raise ValueError("fold start must be aligned to UTC midnight")
     is_delta = pd.Timedelta(days=is_days)
     oos_delta = pd.Timedelta(days=oos_days)
     step_delta = pd.Timedelta(days=step)
@@ -220,8 +222,10 @@ def evaluate_candidate(
     frozen choice are evaluated on that same OOS window.
 
     A callback may return ``None`` to mark an unavailable/invalid evaluation.
-    Invalid neighbors are excluded from the robustness denominator; valid
-    losing and flat neighbors remain in it.
+    Neighbor results fail closed: every unique legal neighbor is in the
+    denominator, while ``None``, malformed, losing, and flat results are
+    nonpositive. Repeated canonical neighbors are chained across their OOS
+    folds before their compounded return is classified.
     """
 
     params = [deepcopy(dict(candidate)) for candidate in parameter_grid]
@@ -234,8 +238,10 @@ def evaluate_candidate(
     oos_equities: list[pd.Series] = []
     oos_trades: list[object] = []
     fold_returns: list[float] = []
-    neighbor_positive = 0
-    neighbor_valid = 0
+    neighbor_results: dict[
+        object,
+        dict[str, object],
+    ] = {}
 
     for fold in ordered_folds:
         best_params: dict[str, object] | None = None
@@ -286,15 +292,30 @@ def evaluate_candidate(
             if key == selected_key or key in seen_neighbors:
                 continue
             seen_neighbors.add(key)
+            aggregate = neighbor_results.setdefault(
+                key,
+                {
+                    "equities": [],
+                    "trades": [],
+                    "valid": True,
+                },
+            )
             neighbor_output = callback(neighbor_copy, fold, sizing, "oos")
-            resolved_neighbor = _resolve_output(neighbor_output, fold, "oos")
+            try:
+                resolved_neighbor = _resolve_output(
+                    neighbor_output,
+                    fold,
+                    "oos",
+                )
+            except (TypeError, ValueError):
+                aggregate["valid"] = False
+                continue
             if resolved_neighbor is None:
+                aggregate["valid"] = False
                 continue
             neighbor_equity, neighbor_trades = resolved_neighbor
-            neighbor_metrics = compute_metrics(neighbor_equity, neighbor_trades)
-            neighbor_valid += 1
-            if neighbor_metrics.total_return > 0.0:
-                neighbor_positive += 1
+            aggregate["equities"].append(neighbor_equity)
+            aggregate["trades"].extend(neighbor_trades)
 
         fold_results.append(
             FoldEvaluation(
@@ -314,9 +335,20 @@ def evaluate_candidate(
         )
     else:
         metrics = _empty_metrics()
-    robustness = (
-        neighbor_positive / neighbor_valid if neighbor_valid else 0.0
-    )
+    neighbor_positive = 0
+    for aggregate in neighbor_results.values():
+        equities = aggregate["equities"]
+        if not aggregate["valid"] or not equities:
+            continue
+        neighbor_equity = _chain_equity(equities)
+        neighbor_metrics = compute_metrics(
+            neighbor_equity,
+            aggregate["trades"],
+        )
+        if neighbor_metrics.total_return > 0.0:
+            neighbor_positive += 1
+    neighbor_valid = len(neighbor_results)
+    robustness = neighbor_positive / neighbor_valid if neighbor_valid else 0.0
     return CandidateEvaluation(
         fold_results=tuple(fold_results),
         metrics=metrics,
@@ -336,10 +368,17 @@ def passes_research_gates(
     if isinstance(evaluation, CandidateEvaluation):
         metrics = evaluation.metrics
         robustness = evaluation.neighbor_robustness
+        fold_results = evaluation.fold_results
         if neighbor_robustness is not None:
             raise ValueError(
                 "neighbor_robustness is already part of CandidateEvaluation"
             )
+        if len(fold_results) != 3:
+            return False
+        try:
+            _validate_folds(tuple(result.fold for result in fold_results))
+        except ValueError:
+            return False
     elif isinstance(evaluation, Metrics):
         metrics = evaluation
         if neighbor_robustness is None:
@@ -351,7 +390,7 @@ def passes_research_gates(
     usable_folds = len(metrics.fold_returns)
     positive_folds = sum(value > 0.0 for value in metrics.fold_returns)
     return (
-        usable_folds > 0
+        usable_folds == 3
         and positive_folds > usable_folds / 2
         and metrics.trades >= 30
         and metrics.max_drawdown >= -0.30
@@ -364,19 +403,53 @@ def _coerce_equity(equity: pd.Series) -> pd.Series:
         raise TypeError("equity must be a pandas Series")
     if equity.empty:
         raise ValueError("equity cannot be empty")
-    if not isinstance(equity.index, pd.DatetimeIndex):
-        raise TypeError("equity index must be a DatetimeIndex")
-    if equity.index.tz is None:
-        raise ValueError("equity timestamps must be timezone-aware")
-    if equity.index.has_duplicates:
-        raise ValueError("equity timestamps must be unique")
     values = pd.to_numeric(equity, errors="coerce").astype(float)
     if not np.isfinite(values.to_numpy()).all():
         raise ValueError("equity values must be finite")
     if (values <= 0.0).any():
         raise ValueError("equity values must be positive")
-    values.index = values.index.tz_convert("UTC")
-    return values.sort_index(kind="stable")
+
+    if isinstance(values.index, pd.DatetimeIndex):
+        timestamps = values.index
+        if timestamps.tz is None:
+            raise ValueError("equity timestamps must be timezone-aware")
+        if timestamps.has_duplicates:
+            raise ValueError(
+                "duplicate timestamps require a timestamp/sequence MultiIndex"
+            )
+        values = values.sort_index(kind="stable")
+        timestamps = values.index.tz_convert("UTC")
+        sequences = range(len(values))
+    elif isinstance(values.index, pd.MultiIndex) and values.index.nlevels == 2:
+        timestamps = pd.DatetimeIndex(values.index.get_level_values(0))
+        if timestamps.tz is None:
+            raise ValueError("equity timestamps must be timezone-aware")
+        raw_sequences = list(values.index.get_level_values(1))
+        if any(
+            isinstance(sequence, bool)
+            or not isinstance(sequence, (int, np.integer))
+            for sequence in raw_sequences
+        ):
+            raise TypeError("event sequence must contain integers")
+        if any(
+            right <= left
+            for left, right in zip(raw_sequences, raw_sequences[1:])
+        ):
+            raise ValueError("event sequence must be strictly increasing")
+        if not timestamps.is_monotonic_increasing:
+            raise ValueError("event timestamps must be nondecreasing")
+        timestamps = timestamps.tz_convert("UTC")
+        sequences = raw_sequences
+    else:
+        raise TypeError(
+            "equity index must be a DatetimeIndex or timestamp/sequence MultiIndex"
+        )
+
+    values.index = pd.MultiIndex.from_arrays(
+        [timestamps, sequences],
+        names=["timestamp", "sequence"],
+    )
+    return values
 
 
 def _trade_net_pnl(trade: object) -> float:
@@ -392,9 +465,65 @@ def _trade_net_pnl(trade: object) -> float:
     return result
 
 
+def _equity_timestamps(event_equity: pd.Series) -> pd.DatetimeIndex:
+    return pd.DatetimeIndex(event_equity.index.get_level_values("timestamp"))
+
+
+def _series_from_events(events: Iterable[object]) -> pd.Series:
+    records = list(events)
+    index = pd.MultiIndex.from_arrays(
+        [
+            [getattr(event, "timestamp") for event in records],
+            [getattr(event, "sequence") for event in records],
+        ],
+        names=["timestamp", "sequence"],
+    )
+    return pd.Series(
+        [getattr(event, "equity") for event in records],
+        index=index,
+        dtype=float,
+    )
+
+
+def _trade_field(trade: object, name: str) -> object:
+    if isinstance(trade, Mapping):
+        if name not in trade:
+            raise TypeError(f"each trade must expose {name}")
+        return trade[name]
+    if not hasattr(trade, name):
+        raise TypeError(f"each trade must expose {name}")
+    return getattr(trade, name)
+
+
+def _validate_trades(
+    trades: Sequence[object],
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> None:
+    for trade in trades:
+        entry_time = _trade_field(trade, "entry_time")
+        exit_time = _trade_field(trade, "exit_time")
+        exit_reason = _trade_field(trade, "exit_reason")
+        if not start <= entry_time < end:
+            raise ValueError("trade entry_time lies outside the fold window")
+        if exit_time == end:
+            if exit_reason != "force_close":
+                raise ValueError(
+                    "trade exit_time at fold end requires force_close"
+                )
+        elif not start <= exit_time < end:
+            raise ValueError("trade exit_time lies outside the fold window")
+        if exit_time < entry_time:
+            raise ValueError("trade exit_time precedes entry_time")
+
+
 def _daily_returns(event_equity: pd.Series) -> pd.Series:
-    start = event_equity.index[0]
-    end = event_equity.index[-1]
+    timestamp_equity = pd.Series(
+        event_equity.to_numpy(),
+        index=_equity_timestamps(event_equity),
+    ).groupby(level=0, sort=False).last()
+    start = timestamp_equity.index[0]
+    end = timestamp_equity.index[-1]
     first_midnight = start.normalize()
     if first_midnight <= start:
         first_midnight += pd.Timedelta(days=1)
@@ -406,7 +535,7 @@ def _daily_returns(event_equity: pd.Series) -> pd.Series:
     )
     boundaries = pd.DatetimeIndex([start, *interior, end])
     values = (
-        event_equity.reindex(event_equity.index.union(boundaries))
+        timestamp_equity.reindex(timestamp_equity.index.union(boundaries))
         .sort_index(kind="stable")
         .ffill()
         .reindex(boundaries)
@@ -433,41 +562,58 @@ def _resolve_output(
 ) -> tuple[pd.Series, list[object]] | None:
     if output is None:
         return None
-    if not isinstance(output, tuple) or len(output) != 2:
-        raise TypeError("callback must return (event_equity, trades) or None")
-    equity, trades = output
+    if hasattr(output, "equity_events") and hasattr(output, "trades"):
+        equity = _series_from_events(output.equity_events)
+        trades = output.trades
+    elif isinstance(output, tuple) and len(output) == 2:
+        equity, trades = output
+    else:
+        raise TypeError(
+            "callback must return BacktestResult, (event_equity, trades), or None"
+        )
     resolved_equity = _coerce_equity(equity)
     start, end = (
         (fold.is_start, fold.is_end)
         if phase == "is"
         else (fold.oos_start, fold.oos_end)
     )
-    if resolved_equity.index[0] != start or resolved_equity.index[-1] != end:
+    timestamps = _equity_timestamps(resolved_equity)
+    if timestamps[0] != start or timestamps[-1] != end:
         raise ValueError(
             f"{phase} equity must cover both fold window boundaries"
         )
-    return resolved_equity, list(trades)
+    resolved_trades = list(trades)
+    _validate_trades(resolved_trades, start, end)
+    return resolved_equity, resolved_trades
 
 
 def _chain_equity(segments: Sequence[pd.Series]) -> pd.Series:
-    chained: list[pd.Series] = []
+    chained_values: list[float] = []
+    chained_timestamps: list[pd.Timestamp] = []
     level = 1.0
     previous_end: pd.Timestamp | None = None
     for raw_segment in segments:
         segment = _coerce_equity(raw_segment)
-        if previous_end is not None and segment.index[0] < previous_end:
+        timestamps = _equity_timestamps(segment)
+        if previous_end is not None and timestamps[0] < previous_end:
             raise ValueError("OOS equity segments overlap")
         normalized = segment / float(segment.iloc[0]) * level
-        if previous_end is not None and segment.index[0] == previous_end:
+        if previous_end is not None and timestamps[0] == previous_end:
             normalized = normalized.iloc[1:]
-        if not normalized.empty:
-            chained.append(normalized)
+            timestamps = timestamps[1:]
+        chained_values.extend(float(value) for value in normalized)
+        chained_timestamps.extend(timestamps)
         level *= float(segment.iloc[-1] / segment.iloc[0])
-        previous_end = segment.index[-1]
-    if not chained:
+        previous_end = _equity_timestamps(segment)[-1]
+    if not chained_values:
         first = _coerce_equity(segments[0])
-        return pd.Series([1.0], index=first.index[:1])
-    return pd.concat(chained)
+        chained_values = [1.0]
+        chained_timestamps = [_equity_timestamps(first)[0]]
+    index = pd.MultiIndex.from_arrays(
+        [chained_timestamps, range(len(chained_values))],
+        names=["timestamp", "sequence"],
+    )
+    return pd.Series(chained_values, index=index)
 
 
 def _params_key(params: Params) -> object:

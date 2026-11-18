@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from cost_aware.config import ExecutionConfig, SizingConfig
-from cost_aware.engine import Trade, run_backtest
+from cost_aware.engine import BacktestResult, Trade, run_backtest, run_backtest_result
 
 
 UTC = timezone.utc
@@ -499,3 +499,118 @@ def test_entry_capacity_prefers_priority_then_symbol_over_input_order():
     trades = run_backtest(candles, signals, [], execution, sizing)
 
     assert {trade.symbol for trade in trades} == {"ETH", "SOL"}
+
+
+def test_backtest_result_records_boundaries_and_same_timestamp_event_order():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 101, 94, 96),
+    ]
+
+    result = run_backtest_result(
+        candles,
+        [signal("BTC", 0, "long", stop=95, take_profit=200)],
+        [{"symbol": "BTC", "timestamp": ts(2), "rate": 0.01}],
+        execution,
+        sizing,
+        start_time=ts(0),
+        end_time=ts(3),
+    )
+
+    assert isinstance(result, BacktestResult)
+    assert result.equity_events[0].kind == "window_start"
+    assert result.equity_events[-1].kind == "window_end"
+    assert [event.sequence for event in result.equity_events] == list(
+        range(len(result.equity_events))
+    )
+    assert [event.kind for event in result.equity_events if event.timestamp == ts(2)] == [
+        "funding",
+        "exit",
+        "bar_mark",
+    ]
+    funding_event = next(
+        event for event in result.equity_events if event.kind == "funding"
+    )
+    assert funding_event.realized_equity < sizing.initial_equity
+
+
+def test_bar_marks_include_unrealized_pnl_for_event_time_drawdown():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 80, 81, 79, 80),
+    ]
+
+    result = run_backtest_result(
+        candles,
+        [signal("BTC", 0, "long", stop=50, take_profit=200)],
+        [],
+        execution,
+        sizing,
+        start_time=ts(0),
+        end_time=ts(3),
+        force_close_at_end=False,
+    )
+
+    entry_event = next(
+        event for event in result.equity_events if event.kind == "entry_fee"
+    )
+    final_mark = [
+        event for event in result.equity_events if event.kind == "bar_mark"
+    ][-1]
+    assert entry_event.realized_equity == pytest.approx(999.95)
+    assert final_mark.realized_equity == pytest.approx(entry_event.realized_equity)
+    assert final_mark.equity < final_mark.realized_equity
+    assert min(event.equity for event in result.equity_events) == pytest.approx(
+        final_mark.equity
+    )
+
+
+def test_force_close_at_end_uses_last_close_adverse_slippage_and_exit_fee():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 105, 106, 104, 105),
+    ]
+
+    result = run_backtest_result(
+        candles,
+        [signal("BTC", 0, "long", stop=50, take_profit=200)],
+        [],
+        execution,
+        sizing,
+        start_time=ts(0),
+        end_time=ts(3),
+        force_close_at_end=True,
+    )
+
+    assert len(result.trades) == 1
+    trade = result.trades[0]
+    assert trade.exit_time == ts(3)
+    assert trade.exit_reason == "force_close"
+    assert trade.exit_price == pytest.approx(105 * 0.9998)
+    assert trade.exit_fee == pytest.approx(
+        trade.quantity * trade.exit_price * execution.fee_per_side
+    )
+    assert result.equity_events[-2].kind == "force_close"
+    assert result.equity_events[-1].equity == pytest.approx(
+        sizing.initial_equity + trade.net_pnl
+    )
+
+
+def test_legacy_run_backtest_remains_a_trade_list_wrapper():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 94, 95),
+    ]
+    signals = [signal("BTC", 0, "long", stop=95, take_profit=200)]
+
+    legacy = run_backtest(candles, signals, [], execution, sizing)
+
+    assert isinstance(legacy, list)
+    assert len(legacy) == 1

@@ -35,6 +35,25 @@ class Trade:
         return self.gross_pnl - self.fees + self.funding_pnl
 
 
+@dataclass(frozen=True)
+class EquityEvent:
+    """One ordered account-equity observation in the event ledger."""
+
+    timestamp: object
+    sequence: int
+    equity: float
+    realized_equity: float
+    kind: str
+
+
+@dataclass(frozen=True)
+class BacktestResult:
+    """Closed trades and the true event-time equity ledger."""
+
+    trades: tuple[Trade, ...]
+    equity_events: tuple[EquityEvent, ...]
+
+
 @dataclass
 class _Position:
     symbol: str
@@ -95,7 +114,64 @@ def run_backtest(
     execution: ExecutionConfig,
     sizing: SizingConfig,
 ) -> list[Trade]:
-    """Run deterministic fill, cost, and funding events without external I/O."""
+    """Backward-compatible wrapper returning only closed trades."""
+    return list(
+        _run_backtest_impl(
+            candles,
+            signals,
+            funding,
+            execution,
+            sizing,
+            start_time=None,
+            end_time=None,
+            force_close_at_end=False,
+        ).trades
+    )
+
+
+def run_backtest_result(
+    candles: Iterable[Row],
+    signals: Iterable[Row],
+    funding: Iterable[Row],
+    execution: ExecutionConfig,
+    sizing: SizingConfig,
+    *,
+    start_time: object,
+    end_time: object,
+    force_close_at_end: bool = True,
+) -> BacktestResult:
+    """Run one independent half-open window and return its event ledger.
+
+    Event order at a timestamp is boundary start, funding, open-known exits,
+    ranked entries, intrabar exits, close-time stops, then the bar-end mark.
+    Forced closes occur at ``end_time`` before the final boundary observation.
+    """
+    if not start_time < end_time:
+        raise ValueError("start_time must precede end_time")
+    return _run_backtest_impl(
+        candles,
+        signals,
+        funding,
+        execution,
+        sizing,
+        start_time=start_time,
+        end_time=end_time,
+        force_close_at_end=force_close_at_end,
+    )
+
+
+def _run_backtest_impl(
+    candles: Iterable[Row],
+    signals: Iterable[Row],
+    funding: Iterable[Row],
+    execution: ExecutionConfig,
+    sizing: SizingConfig,
+    *,
+    start_time: object | None,
+    end_time: object | None,
+    force_close_at_end: bool,
+) -> BacktestResult:
+    """Run deterministic fill, cost, funding, and mark events."""
     bars = list(candles)
     bars_by_symbol: dict[str, list[Row]] = {}
     for bar in bars:
@@ -135,12 +211,33 @@ def run_backtest(
     last_price: dict[str, float] = {}
     equity = sizing.initial_equity
     trades: list[Trade] = []
+    equity_events: list[EquityEvent] = []
+
+    def marked_equity(marks: Mapping[str, float]) -> float:
+        result = equity
+        for symbol, position in positions.items():
+            mark = marks.get(symbol, last_price.get(symbol, position.entry_price))
+            direction = 1 if position.side == "long" else -1
+            result += direction * position.quantity * (mark - position.entry_price)
+        return result
+
+    def record(event_time: object, kind: str, marks: Mapping[str, float]) -> None:
+        equity_events.append(
+            EquityEvent(
+                timestamp=event_time,
+                sequence=len(equity_events),
+                equity=marked_equity(marks),
+                realized_equity=equity,
+                kind=kind,
+            )
+        )
 
     def close_on_bar(
         symbol: str,
         bar: Row,
         event_time: object,
         bar_index: int,
+        marks: Mapping[str, float],
         *,
         open_only: bool = False,
         close_reason: str | None = None,
@@ -180,11 +277,30 @@ def run_backtest(
         equity += trade.gross_pnl - trade.exit_fee
         del positions[symbol]
         last_exit_indexes[symbol] = bar_index
+        record(event_time, "exit", marks)
         return True
 
-    for event_time in sorted(event_times):
+    if start_time is not None:
+        record(start_time, "window_start", {})
+
+    ordered_event_times = sorted(event_times)
+    if start_time is not None and end_time is not None:
+        ordered_event_times = [
+            event_time
+            for event_time in ordered_event_times
+            if start_time <= event_time < end_time
+        ]
+
+    for event_time in ordered_event_times:
         current_bars = sorted(bars_by_event.get(event_time, []))
         bar_for_symbol = {str(bar["symbol"]): bar for _, bar in current_bars}
+        open_marks = dict(last_price)
+        open_marks.update(
+            {
+                symbol: float(bar["open"])
+                for symbol, bar in bar_for_symbol.items()
+            }
+        )
 
         # Funding precedes fills at the same timestamp: a new position was not
         # already open at the published settlement boundary.
@@ -203,6 +319,7 @@ def run_backtest(
             payment = -direction * position.quantity * mark * rate
             position.funding_pnl += payment
             equity += payment
+            record(event_time, "funding", open_marks)
 
         # Only exits knowable at the open can free capacity for open entries.
         existing_symbols = set(positions)
@@ -214,6 +331,7 @@ def run_backtest(
                     bar,
                     event_time,
                     bar_indexes[(symbol, event_time)],
+                    open_marks,
                     open_only=True,
                 )
 
@@ -290,6 +408,7 @@ def run_backtest(
                 time_stop_bars=time_stop_bars,
             )
             equity -= entry_fee
+            record(event_time, "entry_fee", open_marks)
 
         # Intrabar ranges are now known. They apply to both carried and newly
         # opened positions, but cannot retroactively change open admission.
@@ -301,10 +420,18 @@ def run_backtest(
                     bar,
                     event_time,
                     bar_indexes[(symbol, event_time)],
+                    open_marks,
                 )
 
         # Time stops execute at the close, after all open and intrabar events.
         # Consequently they cannot release an entry slot at this bar's open.
+        close_marks = dict(open_marks)
+        close_marks.update(
+            {
+                str(bar["symbol"]): float(bar["close"])
+                for _, bar in current_bars
+            }
+        )
         for _, bar in current_bars:
             symbol = str(bar["symbol"])
             position = positions.get(symbol)
@@ -318,11 +445,53 @@ def run_backtest(
                     bar,
                     event_time,
                     bar_index,
+                    close_marks,
                     close_reason="time_stop",
                 )
 
         for _, bar in current_bars:
             symbol = str(bar["symbol"])
             last_price[symbol] = float(bar["close"])
+        if current_bars:
+            record(event_time, "bar_mark", last_price)
 
-    return trades
+    if start_time is not None and end_time is not None:
+        if force_close_at_end:
+            for symbol in sorted(tuple(positions)):
+                position = positions[symbol]
+                reference = last_price.get(symbol)
+                if reference is None:
+                    raise ValueError(
+                        f"cannot force close {symbol} without an in-window close"
+                    )
+                action = "sell" if position.side == "long" else "buy"
+                exit_price = _adverse_fill(
+                    reference,
+                    action,
+                    execution.slippage_per_side,
+                )
+                trade = Trade(
+                    symbol=symbol,
+                    side=position.side,
+                    entry_time=position.entry_time,
+                    exit_time=end_time,
+                    entry_price=position.entry_price,
+                    exit_price=exit_price,
+                    quantity=position.quantity,
+                    entry_fee=position.entry_fee,
+                    exit_fee=position.quantity
+                    * exit_price
+                    * execution.fee_per_side,
+                    funding_pnl=position.funding_pnl,
+                    exit_reason="force_close",
+                )
+                trades.append(trade)
+                equity += trade.gross_pnl - trade.exit_fee
+                del positions[symbol]
+                record(end_time, "force_close", last_price)
+        record(end_time, "window_end", last_price)
+
+    return BacktestResult(
+        trades=tuple(trades),
+        equity_events=tuple(equity_events),
+    )
