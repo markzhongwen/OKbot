@@ -27,6 +27,13 @@ BacktestCallback = Callable[
     BacktestOutput | None,
 ]
 NeighborCallback = Callable[[Params], Iterable[Params]]
+_NEIGHBOR_DATA_ERRORS = (
+    TypeError,
+    ValueError,
+    AttributeError,
+    KeyError,
+    IndexError,
+)
 
 
 @dataclass(frozen=True)
@@ -57,6 +64,11 @@ class Fold:
             raise TypeError("fold boundaries must be pandas timestamps")
         if any(value.tzinfo is None for value in boundaries):
             raise ValueError("fold boundaries must be timezone-aware")
+        if any(
+            value.tz_convert("UTC") != value.tz_convert("UTC").normalize()
+            for value in boundaries
+        ):
+            raise ValueError("fold boundaries must be aligned to UTC midnight")
         if not self.is_start < self.is_end:
             raise ValueError("in-sample window must have positive duration")
         if self.is_end != self.oos_start:
@@ -109,8 +121,8 @@ def build_folds(
     """Build fixed-length rolling IS windows with non-overlapping OOS windows.
 
     Defaults produce three 15-day OOS folds after rolling 45-day IS windows,
-    spanning 90 days in total.  ``step_days`` is configurable but cannot be
-    shorter than ``oos_days``, because OOS overlap would double count evidence.
+    spanning 90 days in total. ``step_days`` must equal ``oos_days`` so all OOS
+    evidence is contiguous as well as non-overlapping.
     """
 
     values = {
@@ -124,8 +136,10 @@ def build_folds(
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ValueError(f"{name} must be a positive integer")
     step = oos_days if step_days is None else step_days
-    if step < oos_days:
-        raise ValueError("step_days cannot be shorter than oos_days")
+    if step != oos_days:
+        raise ValueError(
+            "step_days must equal oos_days so OOS folds remain adjacent"
+        )
 
     origin = pd.Timestamp(start)
     if origin.tzinfo is None:
@@ -300,14 +314,19 @@ def evaluate_candidate(
                     "valid": True,
                 },
             )
-            neighbor_output = callback(neighbor_copy, fold, sizing, "oos")
             try:
+                neighbor_output = callback(
+                    neighbor_copy,
+                    fold,
+                    sizing,
+                    "oos",
+                )
                 resolved_neighbor = _resolve_output(
                     neighbor_output,
                     fold,
                     "oos",
                 )
-            except (TypeError, ValueError):
+            except _NEIGHBOR_DATA_ERRORS:
                 aggregate["valid"] = False
                 continue
             if resolved_neighbor is None:
@@ -340,11 +359,14 @@ def evaluate_candidate(
         equities = aggregate["equities"]
         if not aggregate["valid"] or not equities:
             continue
-        neighbor_equity = _chain_equity(equities)
-        neighbor_metrics = compute_metrics(
-            neighbor_equity,
-            aggregate["trades"],
-        )
+        try:
+            neighbor_equity = _chain_equity(equities)
+            neighbor_metrics = compute_metrics(
+                neighbor_equity,
+                aggregate["trades"],
+            )
+        except _NEIGHBOR_DATA_ERRORS:
+            continue
         if neighbor_metrics.total_return > 0.0:
             neighbor_positive += 1
     neighbor_valid = len(neighbor_results)
@@ -518,12 +540,14 @@ def _validate_trades(
 
 
 def _daily_returns(event_equity: pd.Series) -> pd.Series:
+    event_timestamps = _equity_timestamps(event_equity)
+    start = event_timestamps[0]
+    end = event_timestamps[-1]
+    initial_equity = float(event_equity.iloc[0])
     timestamp_equity = pd.Series(
         event_equity.to_numpy(),
-        index=_equity_timestamps(event_equity),
+        index=event_timestamps,
     ).groupby(level=0, sort=False).last()
-    start = timestamp_equity.index[0]
-    end = timestamp_equity.index[-1]
     first_midnight = start.normalize()
     if first_midnight <= start:
         first_midnight += pd.Timedelta(days=1)
@@ -533,12 +557,18 @@ def _daily_returns(event_equity: pd.Series) -> pd.Series:
         freq="1D",
         inclusive="left",
     )
-    boundaries = pd.DatetimeIndex([start, *interior, end])
-    values = (
-        timestamp_equity.reindex(timestamp_equity.index.union(boundaries))
+    later_boundaries = pd.DatetimeIndex([*interior, end])
+    later_values = (
+        timestamp_equity.reindex(
+            timestamp_equity.index.union(later_boundaries)
+        )
         .sort_index(kind="stable")
         .ffill()
-        .reindex(boundaries)
+        .reindex(later_boundaries)
+    )
+    values = pd.Series(
+        [initial_equity, *later_values.to_list()],
+        index=pd.DatetimeIndex([start, *later_boundaries]),
     )
     return values.pct_change(fill_method=None).dropna()
 
@@ -553,6 +583,8 @@ def _validate_folds(folds: tuple[Fold, ...]) -> None:
             raise ValueError("folds must be ordered by OOS start")
         if left.oos_end > right.oos_start:
             raise ValueError("OOS folds cannot overlap")
+        if left.oos_end != right.oos_start:
+            raise ValueError("OOS folds must be adjacent")
 
 
 def _resolve_output(

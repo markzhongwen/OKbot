@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
+import pandas as pd
+
 from .config import ExecutionConfig, SizingConfig
 
 
@@ -124,6 +126,7 @@ def run_backtest(
             sizing,
             start_time=None,
             end_time=None,
+            expected_cadence=None,
             force_close_at_end=False,
         ).trades
     )
@@ -138,16 +141,31 @@ def run_backtest_result(
     *,
     start_time: object,
     end_time: object,
+    expected_cadence: object | None = None,
     force_close_at_end: bool = True,
 ) -> BacktestResult:
     """Run one independent half-open window and return its event ledger.
 
     Event order at a timestamp is boundary start, funding, open-known exits,
     ranked entries, intrabar exits, close-time stops, then the bar-end mark.
-    Forced closes occur at ``end_time`` before the final boundary observation.
+    Forced closes occur at ``end_time`` before the final boundary observation
+    and require ``expected_cadence`` to prove that each position has a final
+    complete bar ending exactly at the boundary.
     """
     if not start_time < end_time:
         raise ValueError("start_time must precede end_time")
+    cadence: pd.Timedelta | None = None
+    if force_close_at_end:
+        if expected_cadence is None:
+            raise ValueError(
+                "expected_cadence is required when force_close_at_end is enabled"
+            )
+        try:
+            cadence = pd.Timedelta(expected_cadence)
+        except (TypeError, ValueError) as error:
+            raise ValueError("expected_cadence must be a pandas duration") from error
+        if cadence <= pd.Timedelta(0):
+            raise ValueError("expected_cadence must be positive")
     return _run_backtest_impl(
         candles,
         signals,
@@ -156,6 +174,7 @@ def run_backtest_result(
         sizing,
         start_time=start_time,
         end_time=end_time,
+        expected_cadence=cadence,
         force_close_at_end=force_close_at_end,
     )
 
@@ -169,6 +188,7 @@ def _run_backtest_impl(
     *,
     start_time: object | None,
     end_time: object | None,
+    expected_cadence: pd.Timedelta | None,
     force_close_at_end: bool,
 ) -> BacktestResult:
     """Run deterministic fill, cost, funding, and mark events."""
@@ -209,6 +229,7 @@ def _run_backtest_impl(
     positions: dict[str, _Position] = {}
     last_exit_indexes: dict[str, int] = {}
     last_price: dict[str, float] = {}
+    last_bar_time: dict[str, object] = {}
     equity = sizing.initial_equity
     trades: list[Trade] = []
     equity_events: list[EquityEvent] = []
@@ -292,7 +313,10 @@ def _run_backtest_impl(
         ]
 
     for event_time in ordered_event_times:
-        current_bars = sorted(bars_by_event.get(event_time, []))
+        current_bars = sorted(
+            bars_by_event.get(event_time, []),
+            key=lambda item: (str(item[1]["symbol"]), item[0]),
+        )
         bar_for_symbol = {str(bar["symbol"]): bar for _, bar in current_bars}
         open_marks = dict(last_price)
         open_marks.update(
@@ -304,7 +328,10 @@ def _run_backtest_impl(
 
         # Funding precedes fills at the same timestamp: a new position was not
         # already open at the published settlement boundary.
-        for symbol, rate in funding_by_event.get(event_time, []):
+        for symbol, rate in sorted(
+            funding_by_event.get(event_time, []),
+            key=lambda payment: (payment[0], payment[1]),
+        ):
             if symbol not in positions:
                 continue
             mark = (
@@ -452,6 +479,7 @@ def _run_backtest_impl(
         for _, bar in current_bars:
             symbol = str(bar["symbol"])
             last_price[symbol] = float(bar["close"])
+            last_bar_time[symbol] = event_time
         if current_bars:
             record(event_time, "bar_mark", last_price)
 
@@ -459,6 +487,16 @@ def _run_backtest_impl(
         if force_close_at_end:
             for symbol in sorted(tuple(positions)):
                 position = positions[symbol]
+                final_bar_time = last_bar_time.get(symbol)
+                if (
+                    final_bar_time is None
+                    or expected_cadence is None
+                    or pd.Timestamp(final_bar_time) + expected_cadence
+                    != pd.Timestamp(end_time)
+                ):
+                    raise ValueError(
+                        f"{symbol} has no final complete bar ending at window end"
+                    )
                 reference = last_price.get(symbol)
                 if reference is None:
                     raise ValueError(

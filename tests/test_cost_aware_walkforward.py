@@ -111,6 +111,48 @@ def test_build_folds_rejects_start_not_aligned_to_utc_midnight():
         build_folds(pd.Timestamp("2026-01-01 00:01", tz="UTC"))
 
 
+def test_manual_fold_rejects_any_boundary_not_aligned_to_utc_midnight():
+    start = pd.Timestamp("2026-01-01", tz="UTC")
+
+    with pytest.raises(ValueError, match="UTC midnight"):
+        Fold(
+            index=0,
+            is_start=start + pd.Timedelta(minutes=1),
+            is_end=start + pd.Timedelta(days=45),
+            oos_start=start + pd.Timedelta(days=45),
+            oos_end=start + pd.Timedelta(days=60),
+        )
+
+
+def test_evaluate_candidate_rejects_gaps_between_manual_oos_folds():
+    start = pd.Timestamp("2026-01-01", tz="UTC")
+    folds = (
+        Fold(
+            index=0,
+            is_start=start,
+            is_end=start + pd.Timedelta(days=45),
+            oos_start=start + pd.Timedelta(days=45),
+            oos_end=start + pd.Timedelta(days=60),
+        ),
+        Fold(
+            index=1,
+            is_start=start + pd.Timedelta(days=16),
+            is_end=start + pd.Timedelta(days=61),
+            oos_start=start + pd.Timedelta(days=61),
+            oos_end=start + pd.Timedelta(days=76),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="adjacent"):
+        evaluate_candidate(
+            [{"lookback": 20}],
+            folds,
+            sizing=object(),
+            callback=lambda *args: None,
+            neighbors=lambda selected: (),
+        )
+
+
 def test_metrics_use_compounded_event_equity_and_keep_no_trade_calendar_days():
     index = pd.to_datetime(
         [
@@ -156,6 +198,30 @@ def test_daily_sharpe_includes_return_earned_during_first_calendar_day():
         ),
     )
     daily_returns = pd.Series([0.10, 0.0])
+    expected_sharpe = (
+        daily_returns.mean()
+        / daily_returns.std(ddof=1)
+        * np.sqrt(365.0)
+    )
+
+    metrics = compute_metrics(equity, _trades(1))
+
+    assert metrics.sharpe == pytest.approx(expected_sharpe)
+
+
+def test_daily_sharpe_preserves_first_boundary_before_same_timestamp_costs():
+    start = pd.Timestamp("2026-01-01", tz="UTC")
+    index = pd.MultiIndex.from_tuples(
+        [
+            (start, 0),
+            (start, 1),
+            (start + pd.Timedelta(days=1), 2),
+            (start + pd.Timedelta(days=2), 3),
+        ],
+        names=["timestamp", "sequence"],
+    )
+    equity = pd.Series([100.0, 99.0, 99.0, 99.0], index=index)
+    daily_returns = pd.Series([-0.01, 0.0])
     expected_sharpe = (
         daily_returns.mean()
         / daily_returns.std(ddof=1)
@@ -406,6 +472,9 @@ def test_neighbor_robustness_counts_invalid_and_losing_neighbors_as_nonpositive(
         *({"neighbor": f"loss-{index}"} for index in range(3)),
         {"neighbor": "invalid"},
         {"neighbor": "invalid-output"},
+        {"neighbor": "raises-key"},
+        {"neighbor": "bad-event"},
+        {"neighbor": "bad-pnl"},
     ]
 
     def callback(param, fold, sizing, phase):
@@ -419,6 +488,14 @@ def test_neighbor_robustness_counts_invalid_and_losing_neighbors_as_nonpositive(
                 _equity(start, end - pd.Timedelta(days=1), 0.01),
                 _window_trades(1, start, end),
             )
+        if phase == "oos" and name == "raises-key":
+            raise KeyError("malformed neighbor data")
+        if phase == "oos" and name == "bad-event":
+            return BacktestResult(trades=(), equity_events=(object(),))
+        if phase == "oos" and name == "bad-pnl":
+            trade = _window_trades(1, start, end)[0]
+            trade.net_pnl = "not-numeric"
+            return _equity(start, end, 0.01), [trade]
         result = -0.01 if name.startswith("loss-") else 0.01
         return _equity(start, end, result), _window_trades(1, start, end)
 
@@ -431,8 +508,8 @@ def test_neighbor_robustness_counts_invalid_and_losing_neighbors_as_nonpositive(
     )
 
     assert evaluation.neighbor_positive == 7
-    assert evaluation.neighbor_valid == 12
-    assert evaluation.neighbor_robustness == pytest.approx(7 / 12)
+    assert evaluation.neighbor_valid == 15
+    assert evaluation.neighbor_robustness == pytest.approx(7 / 15)
 
 
 def test_neighbor_robustness_compounds_each_unique_config_across_oos_folds():

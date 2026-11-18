@@ -517,6 +517,7 @@ def test_backtest_result_records_boundaries_and_same_timestamp_event_order():
         sizing,
         start_time=ts(0),
         end_time=ts(3),
+        expected_cadence="1h",
     )
 
     assert isinstance(result, BacktestResult)
@@ -585,6 +586,7 @@ def test_force_close_at_end_uses_last_close_adverse_slippage_and_exit_fee():
         sizing,
         start_time=ts(0),
         end_time=ts(3),
+        expected_cadence="1h",
         force_close_at_end=True,
     )
 
@@ -614,3 +616,66 @@ def test_legacy_run_backtest_remains_a_trade_list_wrapper():
 
     assert isinstance(legacy, list)
     assert len(legacy) == 1
+
+
+def test_result_is_independent_of_candle_signal_and_funding_input_order():
+    execution, sizing = configs()
+    candles = []
+    signals = []
+    funding = []
+    for symbol, rate in (("BTC", 0.01), ("ETH", 0.02)):
+        candles.extend(
+            [
+                candle(symbol, 0, 100, 100, 100, 100),
+                candle(symbol, 1, 100, 101, 99, 100),
+                candle(symbol, 2, 100, 101, 94, 96),
+            ]
+        )
+        signals.append(signal(symbol, 0, "long", stop=95, take_profit=200))
+        funding.append({"symbol": symbol, "timestamp": ts(2), "rate": rate})
+
+    forward = run_backtest_result(
+        candles,
+        signals,
+        funding,
+        execution,
+        sizing,
+        start_time=ts(0),
+        end_time=ts(3),
+        expected_cadence="1h",
+    )
+    reversed_inputs = run_backtest_result(
+        list(reversed(candles)),
+        list(reversed(signals)),
+        list(reversed(funding)),
+        execution,
+        sizing,
+        start_time=ts(0),
+        end_time=ts(3),
+        expected_cadence="1h",
+    )
+
+    assert reversed_inputs == forward
+    assert [trade.symbol for trade in forward.trades] == ["BTC", "ETH"]
+    at_two = [event.kind for event in forward.equity_events if event.timestamp == ts(2)]
+    assert at_two == ["funding", "funding", "exit", "exit", "bar_mark"]
+
+
+def test_force_close_rejects_stale_last_close_when_final_bar_is_missing():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+    ]
+
+    with pytest.raises(ValueError, match="final complete bar"):
+        run_backtest_result(
+            candles,
+            [signal("BTC", 0, "long", stop=50, take_profit=200)],
+            [],
+            execution,
+            sizing,
+            start_time=ts(0),
+            end_time=ts(3),
+            expected_cadence="1h",
+        )
