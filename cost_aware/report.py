@@ -101,6 +101,16 @@ def _validate_calendar_returns(value: object, path: str) -> None:
         _finite(returns[window], f"{path}.{window}")
 
 
+def _overall_rank_key(candidate: Mapping[str, object]) -> tuple[float, float, str, str]:
+    oos = _require_mapping(candidate["oos"], "candidate.oos")
+    return (
+        -_finite(oos["sharpe"], "candidate.oos.sharpe"),
+        -_finite(oos["return"], "candidate.oos.return"),
+        str(candidate["strategy"]),
+        str(candidate["timeframe"]),
+    )
+
+
 def _validate_calibration_returns(value: object, path: str) -> None:
     returns = _require_mapping(value, path)
     _require_fields(returns, ("7d", "30d", "56d"), path)
@@ -317,6 +327,9 @@ def validate_summary(summary: Mapping[str, object]) -> None:
                     "nominal_window",
                     "start_shift_days",
                     "actual_window",
+                    "days",
+                    "start",
+                    "end",
                     "primary_return",
                     "reference_return",
                 ),
@@ -326,11 +339,22 @@ def validate_summary(summary: Mapping[str, object]) -> None:
                 sensitivity_map["nominal_window"] != "30d"
                 or int(sensitivity_map["start_shift_days"]) != 7
                 or sensitivity_map["actual_window"] != "23d"
+                or int(sensitivity_map["days"]) != 23
             ):
                 raise ValueError(
                     f"{path}.start_sensitivity actual_window must be "
                     "a 23d window shifted +7d from 30d"
                 )
+            calendar_end = str(
+                _require_mapping(root["research"], "research")["calendar_window_end"]
+            )
+            if str(sensitivity_map["end"]) != calendar_end:
+                raise ValueError(
+                    f"{path}.start_sensitivity.end must match "
+                    "research.calendar_window_end"
+                )
+            if not str(sensitivity_map["start"]).strip():
+                raise ValueError(f"{path}.start_sensitivity.start is required")
             _finite(
                 sensitivity_map["primary_return"],
                 f"{path}.start_sensitivity.primary_return",
@@ -359,6 +383,21 @@ def validate_summary(summary: Mapping[str, object]) -> None:
 
     if ranks != list(range(1, len(candidates) + 1)):
         raise ValueError("candidate ranks must be contiguous and ordered")
+    for index in range(len(candidates) - 1):
+        current = _require_mapping(candidates[index], f"candidates[{index}]")
+        nxt = _require_mapping(candidates[index + 1], f"candidates[{index + 1}]")
+        if _overall_rank_key(current) > _overall_rank_key(nxt):
+            raise ValueError(
+                "candidates must follow overall order: "
+                "OOS Sharpe descending, then OOS return descending"
+            )
+    for index, raw_candidate in enumerate(candidates):
+        candidate = _require_mapping(raw_candidate, f"candidates[{index}]")
+        rank = int(_finite(candidate["rank"], f"candidates[{index}].rank"))
+        if rank != index + 1:
+            raise ValueError(
+                f"candidates[{index}].rank must match overall order position"
+            )
     expected_passers = sorted(
         passers,
         key=lambda candidate: (
@@ -493,8 +532,16 @@ def _candidate_cells(candidate: Mapping[str, object]) -> list[str]:
     )
     sensitivity = candidate["start_sensitivity"]
     if isinstance(sensitivity, Mapping):
-        primary_sensitivity = _percent(sensitivity["primary_return"])
-        reference_sensitivity = _percent(sensitivity["reference_return"])
+        window = (
+            f"{sensitivity['start']}..{sensitivity['end']} "
+            f"({int(sensitivity['days'])}d)"
+        )
+        primary_sensitivity = (
+            f"{_percent(sensitivity['primary_return'])} `{_markdown(window)}`"
+        )
+        reference_sensitivity = (
+            f"{_percent(sensitivity['reference_return'])} `{_markdown(window)}`"
+        )
     else:
         primary_sensitivity = "—"
         reference_sensitivity = "—"

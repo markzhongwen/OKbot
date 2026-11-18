@@ -240,7 +240,10 @@
         "nominal_window": "30d",
         "primary_return": 0.370101861187041,
         "reference_return": 0.11252124759731852,
-        "start_shift_days": 7
+        "start_shift_days": 7,
+        "days": 23,
+        "start": "2026-10-25T00:00:00+00:00",
+        "end": "2026-11-17T00:00:00+00:00"
       },
       "strategy": "extreme_reversal",
       "timeframe": "3m"
@@ -551,7 +554,10 @@
         "nominal_window": "30d",
         "primary_return": 1.418314462739687,
         "reference_return": 0.35657319112071684,
-        "start_shift_days": 7
+        "start_shift_days": 7,
+        "days": 23,
+        "start": "2026-10-25T00:00:00+00:00",
+        "end": "2026-11-17T00:00:00+00:00"
       },
       "strategy": "donchian",
       "timeframe": "4h"

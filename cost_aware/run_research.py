@@ -106,6 +106,9 @@ PRODUCTION_SOURCE_FILES = (
     "strategies.py",
     "walkforward.py",
     "run_research.py",
+    "config.py",
+    "data.py",
+    "report.py",
 )
 
 
@@ -737,10 +740,14 @@ def _candidate_result(
             sizings=(PRIMARY_SIZING, REFERENCE_SIZING),
         )
         key = f"{START_SENSITIVITY_WINDOW_DAYS}d"
+        window_start = calendar_end - pd.Timedelta(days=START_SENSITIVITY_WINDOW_DAYS)
         start_sensitivity = {
             "nominal_window": "30d",
             "start_shift_days": START_SENSITIVITY_SHIFT_DAYS,
             "actual_window": key,
+            "days": START_SENSITIVITY_WINDOW_DAYS,
+            "start": window_start.isoformat(),
+            "end": calendar_end.isoformat(),
             "primary_return": primary_sensitivity[key],
             "reference_return": reference_sensitivity[key],
         }

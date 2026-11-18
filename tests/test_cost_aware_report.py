@@ -92,6 +92,9 @@ def _summary(*, passing: bool = True) -> dict[str, object]:
                 "nominal_window": "30d",
                 "start_shift_days": 7,
                 "actual_window": "23d",
+                "days": 23,
+                "start": "2026-10-25T00:00:00+00:00",
+                "end": "2026-11-17T00:00:00+00:00",
                 "primary_return": 0.031,
                 "reference_return": 0.012,
             }
@@ -506,6 +509,9 @@ def test_checkpoint_fingerprint_covers_sources_metadata_and_research_contract():
         "strategies.py": b"strategies-v1",
         "walkforward.py": b"walkforward-v1",
         "run_research.py": b"runner-v1",
+        "config.py": b"config-v1",
+        "data.py": b"data-v1",
+        "report.py": b"report-v1",
     }
 
     payload = _fingerprint_payload(data, source_contents=sources)
@@ -513,6 +519,10 @@ def test_checkpoint_fingerprint_covers_sources_metadata_and_research_contract():
     changed_source = _fingerprint(
         data,
         source_contents={**sources, "engine.py": b"engine-v2"},
+    )
+    changed_config = _fingerprint(
+        data,
+        source_contents={**sources, "config.py": b"config-v2"},
     )
     changed_metadata = _fingerprint(
         ResearchData(
@@ -540,6 +550,7 @@ def test_checkpoint_fingerprint_covers_sources_metadata_and_research_contract():
     }
     assert payload["sizing"]["primary"]["margin_fraction"] == 0.10
     assert first != changed_source
+    assert first != changed_config
     assert first != changed_metadata
 
 
@@ -688,13 +699,19 @@ def test_candidate_integration_runs_full_small_grid_and_independent_variants(
     )
 
     sensitivity = result["start_sensitivity"]
-    assert sensitivity == {
-        "nominal_window": "30d",
-        "start_shift_days": 7,
-        "actual_window": "23d",
-        "primary_return": pytest.approx(sensitivity["primary_return"]),
-        "reference_return": pytest.approx(sensitivity["reference_return"]),
-    }
+    assert sensitivity["nominal_window"] == "30d"
+    assert sensitivity["start_shift_days"] == 7
+    assert sensitivity["actual_window"] == "23d"
+    assert sensitivity["days"] == 23
+    assert sensitivity["end"] == calendar_end.isoformat()
+    expected_start = (calendar_end - pd.Timedelta(days=23)).isoformat()
+    assert sensitivity["start"] == expected_start
+    assert sensitivity["primary_return"] == pytest.approx(
+        sensitivity["primary_return"]
+    )
+    assert sensitivity["reference_return"] == pytest.approx(
+        sensitivity["reference_return"]
+    )
     calendar_calls = [
         call
         for call in runner.calls
@@ -766,6 +783,8 @@ def test_passing_report_has_exact_params_all_metrics_and_consistent_numbers():
     assert "minimum_oos_trades" in markdown
     assert "| OOS Sharpe | OOS Max drawdown | OOS Trades | OOS Win rate |" in markdown
     assert "23d (30d start +7d) return" in markdown
+    assert "2026-10-25T00:00:00+00:00" in markdown
+    assert "2026-11-17T00:00:00+00:00" in markdown
     assert "3.10%" in markdown
     assert "latest fold exact params" in markdown
     assert "14 days" in markdown
@@ -836,6 +855,43 @@ def test_outcome_lists_only_passers_in_pass_rank_order_not_overall_rank():
     assert "overall rank does not imply passing status" in markdown
 
 
+def test_summary_validation_rejects_tampered_overall_rank_order():
+    summary = _summary()
+    passing = summary["candidates"][0]
+    weaker = {
+        **passing,
+        "rank": 1,
+        "pass_rank": None,
+        "strategy": "weaker_first",
+        "passed": False,
+        "oos": {
+            **passing["oos"],
+            "return": -0.5,
+            "sharpe": 0.25,
+            "fold_returns": [0.01, -0.02, -0.01],
+        },
+        "start_sensitivity": None,
+    }
+    stronger = {
+        **passing,
+        "rank": 2,
+        "pass_rank": 1,
+        "strategy": "stronger_second",
+        "oos": {
+            **passing["oos"],
+            "return": 0.5,
+            "sharpe": 2.5,
+            "fold_returns": [0.01, 0.02, 0.14],
+        },
+    }
+    summary["candidates"] = [weaker, stronger]
+    summary["research"]["search_counts"]["family_timeframe_candidates"] = 2
+    summary["research"]["search_counts"]["fresh_candidates"] = 2
+
+    with pytest.raises(ValueError, match="overall order"):
+        validate_summary(summary)
+
+
 def test_summary_validation_recomputes_gates_pass_order_and_calibration_contract():
     mismatched_gate = _summary()
     mismatched_gate["candidates"][0]["passed"] = False
@@ -887,6 +943,7 @@ def test_html_report_remains_explicit_and_escaped_for_review_fields():
     assert "OOS Trades" in html
     assert "OOS Win rate" in html
     assert "23d (30d start +7d) return" in html
+    assert "2026-10-25T00:00:00+00:00" in html
     assert "14 days" in html
     assert "45 days" in html
     assert "not independent OOS" in html
