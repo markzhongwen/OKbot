@@ -18,9 +18,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from cost_aware.data import (  # noqa: E402
-    _request_bytes,
     fetch_daily_archives,
     fetch_funding_history,
+    request_okx_json,
     resample_ohlcv,
     select_universe,
     validate_ohlcv,
@@ -36,6 +36,7 @@ def choose_covered_universe(
     primary: list[str],
     backups: list[str],
     coverage: dict[str, int],
+    funding_complete: set[str],
     *,
     limit: int,
     forced: tuple[str, ...] = FORCED,
@@ -51,6 +52,14 @@ def choose_covered_universe(
             "forced instrument coverage below "
             f"{minimum_days} days: {', '.join(insufficient_forced)}"
         )
+    incomplete_forced = [
+        instrument for instrument in forced if instrument not in funding_complete
+    ]
+    if incomplete_forced:
+        raise ValueError(
+            "forced instrument "
+            f"{', '.join(incomplete_forced)} funding incomplete"
+        )
 
     ranked = list(dict.fromkeys([*primary, *backups]))
     nonforced = [
@@ -58,6 +67,7 @@ def choose_covered_universe(
         for instrument in ranked
         if instrument not in forced
         and coverage.get(instrument, 0) >= minimum_days
+        and instrument in funding_complete
     ]
     needed = limit - len(forced)
     if len(nonforced) < needed:
@@ -71,12 +81,13 @@ def choose_covered_universe(
 def ticker_snapshot(
     selected: list[str],
     tickers: list[dict[str, object]],
-) -> dict[str, dict[str, float | int]]:
+) -> dict[str, dict[str, float | int | str]]:
     rows = []
     for ticker in tickers:
         try:
             last = float(ticker["last"])
             volume = float(ticker["volCcy24h"])
+            timestamp = str(ticker["ts"])
         except (KeyError, TypeError, ValueError):
             continue
         rows.append(
@@ -85,6 +96,7 @@ def ticker_snapshot(
                 last,
                 volume,
                 last * volume,
+                timestamp,
             )
         )
     rows.sort(key=lambda row: (-row[3], row[0]))
@@ -94,11 +106,21 @@ def ticker_snapshot(
             "volCcy24h": volume,
             "estimated_quote_volume": quote_volume,
             "rank": rank,
+            "ts": timestamp,
         }
-        for rank, (instrument, last, volume, quote_volume) in enumerate(
+        for rank, (
+            instrument,
+            last,
+            volume,
+            quote_volume,
+            timestamp,
+        ) in enumerate(
             rows, start=1
         )
     }
+    missing = [instrument for instrument in selected if instrument not in by_instrument]
+    if missing:
+        raise ValueError(f"missing ticker snapshot for: {', '.join(missing)}")
     return {
         instrument: by_instrument[instrument]
         for instrument in selected
@@ -106,18 +128,15 @@ def ticker_snapshot(
     }
 
 
-def public_data(url: str, parameters: dict[str, object]) -> list[dict[str, object]]:
-    payload = json.loads(
-        _request_bytes(
-            f"{url}?{urlencode(parameters)}",
-            opener=urlopen,
-            timeout=30,
-            retries=3,
-        )
+def public_data(
+    url: str, parameters: dict[str, object]
+) -> dict[str, object]:
+    return request_okx_json(
+        f"{url}?{urlencode(parameters)}",
+        opener=urlopen,
+        timeout=30,
+        retries=3,
     )
-    if payload.get("code") != "0":
-        raise RuntimeError(f"OKX public API error: {payload}")
-    return payload["data"]
 
 
 def daily_files(cache_root: Path, instrument: str, start, end) -> list[Path]:
@@ -193,8 +212,10 @@ def main() -> int:
     end_exclusive = pd.Timestamp(end_date + timedelta(days=1), tz="UTC")
     args.cache_root.mkdir(parents=True, exist_ok=True)
 
-    instruments = public_data(INSTRUMENTS_URL, {"instType": "SWAP"})
-    tickers = public_data(TICKERS_URL, {"instType": "SWAP"})
+    instruments_payload = public_data(INSTRUMENTS_URL, {"instType": "SWAP"})
+    tickers_payload = public_data(TICKERS_URL, {"instType": "SWAP"})
+    instruments = instruments_payload["data"]
+    tickers = tickers_payload["data"]
     candidate_limit = min(
         len(instruments),
         max(args.universe_size + 15, args.universe_size),
@@ -233,16 +254,19 @@ def main() -> int:
             flush=True,
         )
 
-    download(primary)
-    coverage_days: dict[str, list[str]] = {}
+    coverage_counts: dict[str, int] = {}
+    funding_complete: set[str] = set()
+    funding_frames: dict[str, pd.DataFrame] = {}
     rejected: list[dict[str, object]] = []
-    for instrument in primary:
+    candidate_funding_failures: list[dict[str, str]] = []
+
+    def assess_ohlcv(instrument: str) -> bool:
         days = complete_days(
             daily_files(args.cache_root, instrument, start_date, archive_end_date),
             start_date,
             end_date,
         )
-        coverage_days[instrument] = days
+        coverage_counts[instrument] = len(days)
         if len(days) < 90:
             rejected.append(
                 {
@@ -251,15 +275,46 @@ def main() -> int:
                     "reason": "fewer than 90 complete UTC days",
                 }
             )
+            return False
+        return True
 
-    coverage_counts = {
-        instrument: len(days) for instrument, days in coverage_days.items()
-    }
+    def assess_funding(instrument: str) -> bool:
+        try:
+            frame = fetch_funding_history(
+                instrument,
+                start,
+                end_exclusive,
+                args.cache_root / "funding" / f"{instrument}.parquet",
+            )
+        except Exception as error:
+            failure = {
+                "instrument": instrument,
+                "error": f"{type(error).__name__}: {error}",
+            }
+            candidate_funding_failures.append(failure)
+            rejected.append(
+                {
+                    "instrument": instrument,
+                    "complete_days": coverage_counts.get(instrument, 0),
+                    "reason": f"incomplete funding: {failure['error']}",
+                }
+            )
+            return False
+        funding_complete.add(instrument)
+        funding_frames[instrument] = frame
+        return True
+
+    download(primary)
+    for instrument in primary:
+        if assess_ohlcv(instrument):
+            assess_funding(instrument)
+
     try:
         choose_covered_universe(
             list(FORCED),
             [],
             coverage_counts,
+            funding_complete,
             limit=len(FORCED),
         )
     except ValueError as error:
@@ -269,35 +324,25 @@ def main() -> int:
     evaluated_backups: list[str] = []
     required_nonforced = args.universe_size - len(FORCED)
     for backup in backups:
-        covered_nonforced = sum(
-            instrument not in FORCED and days >= 90
+        eligible_nonforced = sum(
+            instrument not in FORCED
+            and days >= 90
+            and instrument in funding_complete
             for instrument, days in coverage_counts.items()
         )
-        if covered_nonforced >= required_nonforced:
+        if eligible_nonforced >= required_nonforced:
             break
         download([backup])
-        days = complete_days(
-            daily_files(args.cache_root, backup, start_date, archive_end_date),
-            start_date,
-            end_date,
-        )
-        coverage_days[backup] = days
-        coverage_counts[backup] = len(days)
         evaluated_backups.append(backup)
-        if len(days) < 90:
-            rejected.append(
-                {
-                    "instrument": backup,
-                    "complete_days": len(days),
-                    "reason": "fewer than 90 complete UTC days",
-                }
-            )
+        if assess_ohlcv(backup):
+            assess_funding(backup)
 
     try:
         selected = choose_covered_universe(
             primary,
             evaluated_backups,
             coverage_counts,
+            funding_complete,
             limit=args.universe_size,
         )
     except ValueError as error:
@@ -305,7 +350,6 @@ def main() -> int:
         return 1
 
     output_coverage: dict[str, object] = {}
-    funding_failures: list[dict[str, str]] = []
     for sequence, instrument in enumerate(selected, start=1):
         paths = daily_files(
             args.cache_root, instrument, start_date, archive_end_date
@@ -336,34 +380,13 @@ def main() -> int:
             bars.to_parquet(destination, index=False)
             instrument_coverage[directory_name] = frame_coverage(bars)
 
-        try:
-            funding = fetch_funding_history(
-                instrument,
-                start,
-                end_exclusive,
-                args.cache_root / "funding" / f"{instrument}.parquet",
-            )
-            instrument_coverage["funding"] = {
-                "rows": len(funding),
-                "first": (
-                    funding["timestamp"].iloc[0].isoformat()
-                    if not funding.empty
-                    else None
-                ),
-                "last": (
-                    funding["timestamp"].iloc[-1].isoformat()
-                    if not funding.empty
-                    else None
-                ),
-            }
-        except Exception as error:
-            funding_failures.append(
-                {
-                    "instrument": instrument,
-                    "error": f"{type(error).__name__}: {error}",
-                }
-            )
-            instrument_coverage["funding"] = {"error": str(error)}
+        funding = funding_frames[instrument]
+        instrument_coverage["funding"] = {
+            "rows": len(funding),
+            "first": funding["timestamp"].iloc[0].isoformat(),
+            "last": funding["timestamp"].iloc[-1].isoformat(),
+            "max_gap": funding["timestamp"].diff().max().isoformat(),
+        }
 
         output_coverage[instrument] = instrument_coverage
         print(
@@ -382,6 +405,7 @@ def main() -> int:
     selected_tickers = [
         ticker for ticker in tickers if str(ticker.get("instId", "")) in active_usdt
     ]
+    snapshots = ticker_snapshot(selected, selected_tickers)
     metadata = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "OKX public tickers, instruments, daily archives, and funding API",
@@ -390,13 +414,18 @@ def main() -> int:
         "requested_days": args.days,
         "universe_size_requested": args.universe_size,
         "universe": selected,
-        "ticker_snapshot": ticker_snapshot(selected, selected_tickers),
+        "ticker_snapshot": snapshots,
+        "api_timestamps": {
+            "instruments": instruments_payload.get("ts"),
+            "tickers": max(item["ts"] for item in snapshots.values()),
+        },
         "forced_instruments": list(FORCED),
         "downloaded_candidates": requested,
         "rejected_candidates": rejected,
         "coverage": output_coverage,
         "archive_failures": archive_failures,
-        "funding_failures": funding_failures,
+        "funding_failures": [],
+        "candidate_funding_failures": candidate_funding_failures,
     }
     metadata_path = args.cache_root / "metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
@@ -408,7 +437,6 @@ def main() -> int:
             details["complete_utc_days"] < 90
             for details in output_coverage.values()
         )
-        or bool(funding_failures)
     )
     return 1 if concerns else 0
 

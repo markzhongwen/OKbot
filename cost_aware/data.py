@@ -167,6 +167,34 @@ def _request_bytes(
     raise RuntimeError("unreachable retry state")
 
 
+def request_okx_json(
+    url: str,
+    *,
+    opener: Opener = urlopen,
+    timeout: float = 30,
+    retries: int = 3,
+) -> dict[str, object]:
+    """Request an OKX JSON envelope with transport and business-code retries."""
+    for attempt in range(retries + 1):
+        payload = json.loads(
+            _request_bytes(
+                url,
+                opener=opener,
+                timeout=timeout,
+                retries=retries,
+            )
+        )
+        if str(payload.get("code")) == "0":
+            return payload
+        if attempt == retries:
+            raise RuntimeError(
+                "OKX API error "
+                f"code={payload.get('code')} msg={payload.get('msg', '')}"
+            )
+        time.sleep(0.25 * (2**attempt))
+    raise RuntimeError("unreachable OKX JSON retry state")
+
+
 def _archive_frame(payload: bytes) -> pd.DataFrame:
     with ZipFile(BytesIO(payload)) as archive:
         names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
@@ -299,24 +327,12 @@ def fetch_funding_history(
                 "limit": page_limit,
             }
         )
-        url = f"{FUNDING_URL}?{query}"
-        for attempt in range(retries + 1):
-            payload = json.loads(
-                _request_bytes(
-                    url,
-                    opener=opener,
-                    timeout=timeout,
-                    retries=retries,
-                )
-            )
-            if payload.get("code") == "0":
-                break
-            if attempt == retries:
-                raise RuntimeError(
-                    "OKX funding API error "
-                    f"code={payload.get('code')} msg={payload.get('msg', '')}"
-                )
-            time.sleep(0.25 * (2**attempt))
+        payload = request_okx_json(
+            f"{FUNDING_URL}?{query}",
+            opener=opener,
+            timeout=timeout,
+            retries=retries,
+        )
         page = payload.get("data", [])
         if not page:
             break
@@ -354,6 +370,14 @@ def fetch_funding_history(
     if len(timestamps) >= 2:
         differences = timestamps.diff().dropna()
         interval = min(differences.median(), pd.Timedelta(hours=8))
+        gap_tolerance = max(interval * 1.25, pd.Timedelta(hours=8))
+        excessive = differences[differences > gap_tolerance]
+        if not excessive.empty:
+            raise ValueError(
+                f"{instrument}: internal funding gap "
+                f"{excessive.max()} exceeds inferred interval "
+                f"{interval} with tolerance {gap_tolerance}"
+            )
     else:
         interval = pd.Timedelta(hours=8)
     if (

@@ -12,6 +12,7 @@ from cost_aware.data import (
     _request_bytes,
     fetch_daily_archives,
     fetch_funding_history,
+    request_okx_json,
     resample_ohlcv,
     select_universe,
     validate_ohlcv,
@@ -86,6 +87,12 @@ def test_choose_covered_universe_replaces_nonforced_without_squeezing_forced():
         ],
         ["BACKUP-USDT-SWAP"],
         coverage,
+        {
+            "BACKUP-USDT-SWAP",
+            "BTC-USDT-SWAP",
+            "ETH-USDT-SWAP",
+            "SOL-USDT-SWAP",
+        },
         limit=4,
     )
 
@@ -110,7 +117,66 @@ def test_choose_covered_universe_fails_when_forced_instrument_lacks_coverage():
             ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"],
             ["BACKUP-USDT-SWAP"],
             coverage,
+            {
+                "BACKUP-USDT-SWAP",
+                "BTC-USDT-SWAP",
+                "ETH-USDT-SWAP",
+                "SOL-USDT-SWAP",
+            },
             limit=4,
+        )
+
+
+def test_choose_covered_universe_replaces_funding_incomplete_nonforced():
+    instruments = [
+        "GAPPED-USDT-SWAP",
+        "BTC-USDT-SWAP",
+        "ETH-USDT-SWAP",
+        "SOL-USDT-SWAP",
+    ]
+    coverage = {
+        instrument: 91
+        for instrument in [*instruments, "BACKUP-USDT-SWAP"]
+    }
+
+    selected = choose_covered_universe(
+        instruments,
+        ["BACKUP-USDT-SWAP"],
+        coverage,
+        {
+            "BACKUP-USDT-SWAP",
+            "BTC-USDT-SWAP",
+            "ETH-USDT-SWAP",
+            "SOL-USDT-SWAP",
+        },
+        limit=4,
+    )
+
+    assert selected == [
+        "BACKUP-USDT-SWAP",
+        "BTC-USDT-SWAP",
+        "ETH-USDT-SWAP",
+        "SOL-USDT-SWAP",
+    ]
+
+
+def test_choose_covered_universe_fails_if_forced_funding_is_incomplete():
+    coverage = {
+        instrument: 91
+        for instrument in (
+            "BTC-USDT-SWAP",
+            "ETH-USDT-SWAP",
+            "SOL-USDT-SWAP",
+        )
+    }
+
+    with pytest.raises(ValueError, match="forced.*SOL-USDT-SWAP.*funding"):
+        choose_covered_universe(
+            list(coverage),
+            [],
+            coverage,
+            {"BTC-USDT-SWAP", "ETH-USDT-SWAP"},
+            limit=3,
         )
 
 
@@ -118,9 +184,24 @@ def test_ticker_snapshot_records_quote_volume_and_market_rank():
     snapshot = ticker_snapshot(
         ["BTC-USDT-SWAP", "SOL-USDT-SWAP"],
         [
-            {"instId": "SOL-USDT-SWAP", "last": "5", "volCcy24h": "3"},
-            {"instId": "BTC-USDT-SWAP", "last": "100", "volCcy24h": "2"},
-            {"instId": "ETH-USDT-SWAP", "last": "10", "volCcy24h": "3"},
+            {
+                "instId": "SOL-USDT-SWAP",
+                "last": "5",
+                "volCcy24h": "3",
+                "ts": "1794990000002",
+            },
+            {
+                "instId": "BTC-USDT-SWAP",
+                "last": "100",
+                "volCcy24h": "2",
+                "ts": "1794990000000",
+            },
+            {
+                "instId": "ETH-USDT-SWAP",
+                "last": "10",
+                "volCcy24h": "3",
+                "ts": "1794990000001",
+            },
         ],
     )
 
@@ -130,14 +211,24 @@ def test_ticker_snapshot_records_quote_volume_and_market_rank():
             "volCcy24h": 2.0,
             "estimated_quote_volume": 200.0,
             "rank": 1,
+            "ts": "1794990000000",
         },
         "SOL-USDT-SWAP": {
             "last": 5.0,
             "volCcy24h": 3.0,
             "estimated_quote_volume": 15.0,
             "rank": 3,
+            "ts": "1794990000002",
         },
     }
+
+
+def test_ticker_snapshot_requires_every_selected_instrument():
+    with pytest.raises(ValueError, match="missing ticker snapshot.*SOL"):
+        ticker_snapshot(
+            ["BTC-USDT-SWAP", "SOL-USDT-SWAP"],
+            [{"instId": "BTC-USDT-SWAP", "last": "100", "volCcy24h": "2"}],
+        )
 
 
 def test_validate_ohlcv_normalizes_open_time_to_utc_and_sorts():
@@ -271,6 +362,55 @@ def test_request_bytes_retries_rate_limits_and_server_errors(
     assert sleeps == [0.0]
 
 
+def test_request_okx_json_retries_business_error_and_preserves_api_timestamp(
+    monkeypatch,
+):
+    responses = [
+        {"code": "50011", "msg": "temporary", "data": []},
+        {"code": "0", "ts": "1794990000000", "data": [{"instId": "BTC"}]},
+    ]
+    sleeps = []
+
+    def opener(_request, _timeout=None, **_kwargs):
+        return Response(json.dumps(responses.pop(0)).encode())
+
+    monkeypatch.setattr("cost_aware.data.time.sleep", sleeps.append)
+
+    payload = request_okx_json(
+        "https://example.test/public",
+        opener=opener,
+        timeout=1,
+        retries=1,
+    )
+
+    assert payload["data"] == [{"instId": "BTC"}]
+    assert payload["ts"] == "1794990000000"
+    assert sleeps == [0.25]
+
+
+def test_request_okx_json_raises_clear_error_after_business_retries(
+    monkeypatch,
+):
+    calls = 0
+
+    def opener(_request, _timeout=None, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return Response(b'{"code":"50011","msg":"still limited","data":[]}')
+
+    monkeypatch.setattr("cost_aware.data.time.sleep", lambda _delay: None)
+
+    with pytest.raises(RuntimeError, match="code=50011.*still limited"):
+        request_okx_json(
+            "https://example.test/public",
+            opener=opener,
+            timeout=1,
+            retries=2,
+        )
+
+    assert calls == 3
+
+
 def zipped_csv(text: str) -> bytes:
     payload = BytesIO()
     with ZipFile(payload, "w") as archive:
@@ -347,10 +487,21 @@ def test_fetch_funding_history_paginates_with_bounds_and_prefers_realized_rate(
             "data": [
                 {
                     "instId": "BTC-USDT-SWAP",
+                    "fundingTime": ms("2026-01-02 00:00:00+00:00"),
+                    "realizedRate": "0.005",
+                    "fundingRate": "0.009",
+                },
+                {
+                    "instId": "BTC-USDT-SWAP",
                     "fundingTime": ms("2026-01-01 16:00:00+00:00"),
                     "realizedRate": "0.003",
                     "fundingRate": "0.009",
                 },
+            ],
+        },
+        {
+            "code": "0",
+            "data": [
                 {
                     "instId": "BTC-USDT-SWAP",
                     "fundingTime": ms("2026-01-01 08:00:00+00:00"),
@@ -375,7 +526,7 @@ def test_fetch_funding_history_paginates_with_bounds_and_prefers_realized_rate(
         page_limit=2,
     )
 
-    assert result["rate"].tolist() == [0.004, 0.003, 0.002, 0.001]
+    assert result["rate"].tolist() == [0.004, 0.003, 0.005, 0.002, 0.001]
     first_query = parse_qs(urlparse(calls[0][0].full_url).query)
     second_query = parse_qs(urlparse(calls[1][0].full_url).query)
     assert first_query["before"] == [ms(start)]
@@ -507,3 +658,40 @@ def test_fetch_funding_history_retries_http_200_business_error(tmp_path):
     )
 
     assert len(result) == 2
+
+
+def test_fetch_funding_history_rejects_internal_settlement_gap(tmp_path):
+    start = pd.Timestamp("2026-01-01 00:00:00+00:00")
+    end = pd.Timestamp("2026-01-03 00:00:00+00:00")
+    timestamps = [
+        start + pd.Timedelta(hours=8),
+        start + pd.Timedelta(hours=16),
+        start + pd.Timedelta(hours=32),
+        end - pd.Timedelta(hours=8),
+    ]
+    pages = [
+        {
+            "code": "0",
+            "data": [
+                {
+                    "instId": "BTC-USDT-SWAP",
+                    "fundingTime": str(int(timestamp.timestamp() * 1000)),
+                    "realizedRate": "0.001",
+                }
+                for timestamp in reversed(timestamps)
+            ],
+        },
+        {"code": "0", "data": []},
+    ]
+
+    def opener(_request, _timeout=None, **_kwargs):
+        return Response(json.dumps(pages.pop(0)).encode())
+
+    with pytest.raises(ValueError, match="internal funding gap"):
+        fetch_funding_history(
+            "BTC-USDT-SWAP",
+            start,
+            end,
+            tmp_path / "funding.parquet",
+            opener=opener,
+        )
