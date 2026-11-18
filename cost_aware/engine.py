@@ -246,9 +246,33 @@ def run_backtest(
             time_stop_bars = int(signal.get("time_stop_bars", 0))
             if time_stop_bars < 0:
                 raise ValueError("time_stop_bars cannot be negative")
+            reference_open = float(bar["open"])
+            has_stop_distance = "stop_distance" in signal
+            has_take_profit_distance = "take_profit_distance" in signal
+            if has_stop_distance or has_take_profit_distance:
+                # Distance fields deliberately take precedence when a caller
+                # also supplies backward-compatible absolute levels.
+                if not (has_stop_distance and has_take_profit_distance):
+                    raise ValueError(
+                        "stop_distance and take_profit_distance must be paired"
+                    )
+                stop_distance = float(signal["stop_distance"])
+                take_profit_distance = float(signal["take_profit_distance"])
+                if stop_distance <= 0 or take_profit_distance <= 0:
+                    raise ValueError("risk distances must be positive")
+                if side == "long":
+                    stop = reference_open - stop_distance
+                    take_profit = reference_open + take_profit_distance
+                else:
+                    stop = reference_open + stop_distance
+                    take_profit = reference_open - take_profit_distance
+            else:
+                # Backward-compatible handwritten signals use absolute levels.
+                stop = float(signal["stop"])
+                take_profit = float(signal["take_profit"])
             action = "buy" if side == "long" else "sell"
             entry_price = _adverse_fill(
-                float(bar["open"]), action, execution.slippage_per_side
+                reference_open, action, execution.slippage_per_side
             )
             notional = equity * sizing.margin_fraction * sizing.leverage
             quantity = notional / entry_price
@@ -260,8 +284,8 @@ def run_backtest(
                 entry_price=entry_price,
                 quantity=quantity,
                 entry_fee=entry_fee,
-                stop=float(signal["stop"]),
-                take_profit=float(signal["take_profit"]),
+                stop=stop,
+                take_profit=take_profit,
                 entry_bar_index=bar_index,
                 time_stop_bars=time_stop_bars,
             )
@@ -287,7 +311,7 @@ def run_backtest(
             if position is None or position.time_stop_bars == 0:
                 continue
             bar_index = bar_indexes[(symbol, event_time)]
-            held_bars = bar_index - position.entry_bar_index + 1
+            held_bars = bar_index - position.entry_bar_index
             if held_bars >= position.time_stop_bars:
                 close_on_bar(
                     symbol,

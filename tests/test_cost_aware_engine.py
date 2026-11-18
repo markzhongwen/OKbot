@@ -28,18 +28,21 @@ def signal(
     symbol: str,
     hour: int,
     side: str,
-    stop: float,
-    take_profit: float,
+    stop: float | None,
+    take_profit: float | None,
     **lifecycle,
 ):
-    return {
+    result = {
         "symbol": symbol,
         "timestamp": ts(hour),
         "side": side,
-        "stop": stop,
-        "take_profit": take_profit,
         **lifecycle,
     }
+    if stop is not None:
+        result["stop"] = stop
+    if take_profit is not None:
+        result["take_profit"] = take_profit
+    return result
 
 
 def configs(*, max_positions: int = 3):
@@ -300,7 +303,7 @@ def test_intrabar_exit_does_not_retroactively_free_slot_for_same_open_entry():
     assert [trade.symbol for trade in trades] == ["BTC"]
 
 
-def test_time_stop_exits_at_close_with_adverse_slippage_after_full_holding_bars():
+def test_time_stop_one_exits_at_next_bar_close_not_entry_bar_close():
     execution, sizing = configs()
     candles = [
         candle("BTC", 0, 100, 100, 100, 100),
@@ -317,7 +320,7 @@ def test_time_stop_exits_at_close_with_adverse_slippage_after_full_holding_bars(
                 "long",
                 stop=90,
                 take_profit=200,
-                time_stop_bars=2,
+                time_stop_bars=1,
             )
         ],
         [],
@@ -328,6 +331,50 @@ def test_time_stop_exits_at_close_with_adverse_slippage_after_full_holding_bars(
     assert trade.exit_time == ts(2)
     assert trade.exit_reason == "time_stop"
     assert trade.exit_price == pytest.approx(102 * 0.9998)
+
+
+@pytest.mark.parametrize(
+    ("side", "low", "high", "expected_reference", "slippage_multiplier"),
+    [
+        ("long", 114, 121, 115, 0.9998),
+        ("short", 119, 126, 125, 1.0002),
+    ],
+)
+def test_distance_risk_is_anchored_to_unadjusted_next_open_and_takes_precedence(
+    side,
+    low,
+    high,
+    expected_reference,
+    slippage_multiplier,
+):
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 101, 99, 100),
+        candle("BTC", 1, 120, high, low, 120),
+    ]
+
+    trade = run_backtest(
+        candles,
+        [
+            signal(
+                "BTC",
+                0,
+                side,
+                stop=50,
+                take_profit=250,
+                stop_distance=5,
+                take_profit_distance=10,
+            )
+        ],
+        [],
+        execution,
+        sizing,
+    )[0]
+
+    assert trade.exit_reason == "stop"
+    assert trade.exit_price == pytest.approx(
+        expected_reference * slippage_multiplier
+    )
 
 
 def test_intrabar_stop_precedes_time_stop_on_same_bar():
@@ -379,7 +426,7 @@ def test_time_stop_at_close_does_not_release_slot_for_same_bar_open_entry():
                 "long",
                 stop=90,
                 take_profit=200,
-                time_stop_bars=2,
+                time_stop_bars=1,
             ),
             signal("ETH", 1, "long", stop=95, take_profit=200),
         ],

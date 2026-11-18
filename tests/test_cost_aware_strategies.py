@@ -17,8 +17,8 @@ REQUIRED_SIGNAL_COLUMNS = [
     "symbol",
     "timestamp",
     "side",
-    "stop",
-    "take_profit",
+    "stop_distance",
+    "take_profit_distance",
     "time_stop_bars",
     "cooldown_bars",
     "priority",
@@ -198,6 +198,39 @@ def test_donchian_grid_contains_supplied_calibration_without_grid_explosion():
     assert len(parameter_grid(STRATEGY_SPECS["donchian"])) == 8
 
 
+def test_supplied_donchian_calibration_emits_distance_lifecycle_signal():
+    calibration = {
+        "lookback": 20,
+        "atr_window": 14,
+        "stop_atr": 3.5,
+        "take_profit_atr": 4.0,
+        "time_stop_bars": 24,
+        "cooldown_bars": 6,
+    }
+    frame = bars({"BTC": [100.0] * 20 + [110.0]})
+    true_range = pd.concat(
+        [
+            frame["high"] - frame["low"],
+            (frame["high"] - frame["close"].shift()).abs(),
+            (frame["low"] - frame["close"].shift()).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    atr = true_range.rolling(14).mean().iloc[-1]
+
+    signal = generate_signals(
+        frame,
+        STRATEGY_SPECS["donchian"],
+        calibration,
+        expected_cadence="1h",
+    ).iloc[-1]
+
+    assert signal["stop_distance"] == pytest.approx(3.5 * atr)
+    assert signal["take_profit_distance"] == pytest.approx(4.0 * atr)
+    assert signal["time_stop_bars"] == 24
+    assert signal["cooldown_bars"] == 6
+
+
 def test_cross_sectional_grid_rotates_one_winner_and_one_loser():
     grid = parameter_grid(STRATEGY_SPECS["cross_sectional_momentum"])
 
@@ -251,7 +284,7 @@ def test_extreme_reversal_short_only_never_emits_longs():
     assert set(signals["side"]) == {"short"}
 
 
-def test_stops_and_targets_use_signal_bar_atr():
+def test_risk_distances_use_signal_bar_atr_for_next_open_anchoring():
     frame, params, _ = CASES["donchian"]
 
     signal = generate_signals(
@@ -268,12 +301,14 @@ def test_stops_and_targets_use_signal_bar_atr():
     signal_atr = true_range.rolling(params["atr_window"]).mean().iloc[-1]
 
     assert signal["timestamp"] == frame["open_time"].iloc[-1]
-    assert signal["stop"] == pytest.approx(
-        frame["close"].iloc[-1] - params["stop_atr"] * signal_atr
+    assert signal["stop_distance"] == pytest.approx(
+        params["stop_atr"] * signal_atr
     )
-    assert signal["take_profit"] == pytest.approx(
-        frame["close"].iloc[-1] + params["take_profit_atr"] * signal_atr
+    assert signal["take_profit_distance"] == pytest.approx(
+        params["take_profit_atr"] * signal_atr
     )
+    assert "stop" not in signal.index
+    assert "take_profit" not in signal.index
 
 
 def long_tail_bars(periods: int = 240) -> pd.DataFrame:
@@ -313,14 +348,16 @@ def test_actual_grid_params_are_prefix_invariant_at_multiple_long_tail_cutoffs(
     frame = long_tail_bars()
     spec = STRATEGY_SPECS[strategy_name]
     params = parameter_grid(spec)[0]
-    full = generate_signals(frame, spec, params)
+    full = generate_signals(frame, spec, params, expected_cadence="1h")
 
     assert not full.empty
     timestamps = sorted(frame["open_time"].unique())
     for cutoff_index in (130, 180, 220):
         cutoff = timestamps[cutoff_index]
         prefix = frame.loc[frame["open_time"] <= cutoff]
-        prefix_signals = generate_signals(prefix, spec, params)
+        prefix_signals = generate_signals(
+            prefix, spec, params, expected_cadence="1h"
+        )
         expected = full.loc[full["timestamp"] <= cutoff].reset_index(drop=True)
         pd.testing.assert_frame_equal(
             prefix_signals.reset_index(drop=True),
@@ -331,7 +368,9 @@ def test_actual_grid_params_are_prefix_invariant_at_multiple_long_tail_cutoffs(
         future = mutated["open_time"] > cutoff
         mutated.loc[future, ["open", "high", "low", "close"]] *= 1.7
         mutated.loc[future, "vol"] = 1_000_000.0
-        mutated_prior = generate_signals(mutated, spec, params)
+        mutated_prior = generate_signals(
+            mutated, spec, params, expected_cadence="1h"
+        )
         mutated_prior = mutated_prior.loc[
             mutated_prior["timestamp"] <= cutoff
         ].reset_index(drop=True)
@@ -344,12 +383,46 @@ def test_extreme_return_after_missing_bar_is_not_treated_as_one_bar_return():
     frame.loc[frame.index[-1], "open_time"] += pd.Timedelta(hours=1)
     params = {**params, "direction": "both"}
 
-    signals = generate_signals(frame, STRATEGY_SPECS["extreme_reversal"], params)
+    signals = generate_signals(
+        frame,
+        STRATEGY_SPECS["extreme_reversal"],
+        params,
+        expected_cadence="1h",
+    )
 
     assert signals.empty
 
 
-def test_bar_interval_inference_does_not_use_future_timestamp_cadence():
+def test_explicit_cadence_rejects_gap_in_first_observed_interval():
+    frame = bars(
+        {"BTC": [100.0, 110.0, 110.0]},
+        volumes_by_symbol={"BTC": [10.0, 30.0, 10.0]},
+    )
+    frame["open_time"] = pd.to_datetime(
+        [
+            "2026-01-01 00:00:00+00:00",
+            "2026-01-01 02:00:00+00:00",
+            "2026-01-01 03:00:00+00:00",
+        ]
+    )
+    params = {
+        **CASES["extreme_reversal"][1],
+        "volume_window": 1,
+        "atr_window": 1,
+        "direction": "both",
+    }
+
+    signals = generate_signals(
+        frame,
+        STRATEGY_SPECS["extreme_reversal"],
+        params,
+        expected_cadence=pd.Timedelta(hours=1),
+    )
+
+    assert signals.empty
+
+
+def test_explicit_cadence_is_not_revised_by_future_timestamp_cadence():
     frame = bars(
         {"BTC": [100.0] * 11 + [110.0]},
         volumes_by_symbol={"BTC": [10.0] * 11 + [30.0]},
@@ -373,10 +446,16 @@ def test_bar_interval_inference_does_not_use_future_timestamp_cadence():
     }
 
     prefix_signals = generate_signals(
-        frame, STRATEGY_SPECS["extreme_reversal"], params
+        frame,
+        STRATEGY_SPECS["extreme_reversal"],
+        params,
+        expected_cadence="2h",
     )
     full_signals = generate_signals(
-        full_frame, STRATEGY_SPECS["extreme_reversal"], params
+        full_frame,
+        STRATEGY_SPECS["extreme_reversal"],
+        params,
+        expected_cadence="2h",
     )
     full_prior = full_signals.loc[
         full_signals["timestamp"] <= frame["open_time"].max()
@@ -411,7 +490,10 @@ def test_cross_sectional_momentum_excludes_symbol_whose_lookback_crosses_gap():
     }
 
     signals = generate_signals(
-        frame, STRATEGY_SPECS["cross_sectional_momentum"], params
+        frame,
+        STRATEGY_SPECS["cross_sectional_momentum"],
+        params,
+        expected_cadence="1h",
     )
     final = signals.loc[
         signals["timestamp"] == pd.Timestamp("2026-01-01 11:00:00+00:00")

@@ -1,9 +1,10 @@
-"""Deterministic closed-candle strategy signals for cost-aware research.
+"""Closed-candle strategy signals with next-open risk and lifecycle metadata.
 
-Every emitted row is an instruction for :mod:`cost_aware.engine`: its timestamp
-is the fully closed signal bar, while the engine applies its configured
-``signal_lag_bars`` before filling at a later open.  Time stops and cooldowns
-are intentionally absent because the current engine has no interface for them.
+Signal timestamps identify fully closed bars. Indicators and ATR risk distances
+use only that bar and its history; :mod:`cost_aware.engine` applies the lag,
+anchors those distances to the unadjusted next open, and enforces time stops and
+cooldowns. Return strategies accept an explicit expected cadence so missing
+bars cannot masquerade as one-period returns.
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ SIGNAL_COLUMNS = [
     "symbol",
     "timestamp",
     "side",
-    "stop",
-    "take_profit",
+    "stop_distance",
+    "take_profit_distance",
     "time_stop_bars",
     "cooldown_bars",
     "priority",
@@ -185,13 +186,16 @@ def generate_signals(
     candles: pd.DataFrame,
     spec: StrategySpec | str,
     params: ParameterSet,
+    expected_cadence: pd.Timedelta | str | None = None,
 ) -> pd.DataFrame:
     """Generate causal signal rows from OHLCV bars.
 
     Input accepts the cached parquet timestamp name ``open_time`` or the
     engine-facing name ``timestamp``. Indicators are grouped by symbol and use
     only each row and earlier rows; prior-window breakouts explicitly shift the
-    channel by one bar.
+    channel by one bar. ``expected_cadence`` should be supplied by the research
+    runner from its timeframe. If omitted, the smallest positive interval in
+    the complete input is used as a deterministic fallback.
     """
     resolved = _resolve_spec(spec)
     values = _validate_parameter_keys(resolved, params)
@@ -200,6 +204,7 @@ def generate_signals(
     frame["atr"] = _group_indicator(
         frame, lambda group: _average_true_range(group, atr_window)
     )
+    cadence = _resolve_expected_cadence(frame, expected_cadence)
 
     if resolved.name == "donchian":
         long_mask, short_mask, priority = _donchian(frame, values)
@@ -222,12 +227,14 @@ def generate_signals(
             frame, long_mask, short_mask, values, priority
         )
     if resolved.name == "extreme_reversal":
-        long_mask, short_mask, priority = _extreme_reversal(frame, values)
+        long_mask, short_mask, priority = _extreme_reversal(
+            frame, values, cadence
+        )
         return _directional_signals(
             frame, long_mask, short_mask, values, priority
         )
     if resolved.name == "cross_sectional_momentum":
-        return _cross_sectional_momentum(frame, values)
+        return _cross_sectional_momentum(frame, values, cadence)
     if resolved.name == "regime_gated":
         long_mask, short_mask, priority = _regime_gated(frame, values)
         return _directional_signals(
@@ -322,6 +329,23 @@ def _prepare_candles(candles: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _resolve_expected_cadence(
+    frame: pd.DataFrame,
+    expected_cadence: pd.Timedelta | str | None,
+) -> pd.Timedelta | None:
+    if expected_cadence is None:
+        differences = frame.groupby("symbol", sort=False)["timestamp"].diff()
+        positive = differences[differences > pd.Timedelta(0)]
+        return positive.min() if not positive.empty else None
+    try:
+        cadence = pd.Timedelta(expected_cadence)
+    except (TypeError, ValueError) as error:
+        raise ValueError("expected_cadence must be a pandas duration") from error
+    if cadence <= pd.Timedelta(0):
+        raise ValueError("expected_cadence must be positive")
+    return cadence
+
+
 def _group_indicator(frame: pd.DataFrame, calculate) -> pd.Series:
     result = pd.Series(np.nan, index=frame.index, dtype=float)
     for _, group in frame.groupby("symbol", sort=False):
@@ -342,18 +366,17 @@ def _average_true_range(group: pd.DataFrame, window: int) -> pd.Series:
     return true_range.rolling(window, min_periods=window).mean()
 
 
-def _causal_pct_change(group: pd.DataFrame, periods: int) -> pd.Series:
+def _causal_pct_change(
+    group: pd.DataFrame,
+    periods: int,
+    expected_cadence: pd.Timedelta | None,
+) -> pd.Series:
     """Return changes only when observed rows span the expected bar duration."""
-    differences = group["timestamp"].diff().dropna()
-    positive = differences.where(differences > pd.Timedelta(0))
-    if positive.dropna().empty:
+    if expected_cadence is None:
         return pd.Series(np.nan, index=group.index, dtype=float)
-    # The smallest interval observed so far is a causal estimate of the base
-    # timeframe; larger multiples indicate one or more missing bars.
-    interval = positive.reindex(group.index).cummin()
     elapsed = group["timestamp"] - group["timestamp"].shift(periods)
     change = group["close"] / group["close"].shift(periods) - 1
-    return change.where(elapsed == interval * periods)
+    return change.where(elapsed == expected_cadence * periods)
 
 
 def _donchian(
@@ -455,7 +478,9 @@ def _vwap_mean_reversion(
 
 
 def _extreme_reversal(
-    frame: pd.DataFrame, params: ParameterSet
+    frame: pd.DataFrame,
+    params: ParameterSet,
+    expected_cadence: pd.Timedelta | None,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     return_lookback = _positive_int(params, "return_lookback")
     volume_window = _positive_int(params, "volume_window")
@@ -466,7 +491,10 @@ def _extreme_reversal(
         raise ValueError("direction must be 'both' or 'short'")
 
     returns = _group_indicator(
-        frame, lambda group: _causal_pct_change(group, return_lookback)
+        frame,
+        lambda group: _causal_pct_change(
+            group, return_lookback, expected_cadence
+        ),
     )
     prior_volume = _group_indicator(
         frame,
@@ -483,12 +511,15 @@ def _extreme_reversal(
 
 
 def _cross_sectional_momentum(
-    frame: pd.DataFrame, params: ParameterSet
+    frame: pd.DataFrame,
+    params: ParameterSet,
+    expected_cadence: pd.Timedelta | None,
 ) -> pd.DataFrame:
     lookback = _positive_int(params, "lookback")
     selection_count = _positive_int(params, "selection_count")
     momentum = _group_indicator(
-        frame, lambda group: _causal_pct_change(group, lookback)
+        frame,
+        lambda group: _causal_pct_change(group, lookback, expected_cadence),
     )
     long_mask = pd.Series(False, index=frame.index)
     short_mask = pd.Series(False, index=frame.index)
@@ -568,21 +599,17 @@ def _directional_signals(
     records: list[dict[str, object]] = []
     for side, mask in (("long", long_mask), ("short", short_mask)):
         for row in frame.loc[mask & frame["atr"].notna()].itertuples():
-            if side == "long":
-                stop = row.close - stop_atr * row.atr
-                take_profit = row.close + take_profit_atr * row.atr
-            else:
-                stop = row.close + stop_atr * row.atr
-                take_profit = row.close - take_profit_atr * row.atr
-            if stop <= 0 or take_profit <= 0:
+            stop_distance = stop_atr * row.atr
+            take_profit_distance = take_profit_atr * row.atr
+            if stop_distance <= 0 or take_profit_distance <= 0:
                 continue
             records.append(
                 {
                     "symbol": row.symbol,
                     "timestamp": row.timestamp,
                     "side": side,
-                    "stop": float(stop),
-                    "take_profit": float(take_profit),
+                    "stop_distance": float(stop_distance),
+                    "take_profit_distance": float(take_profit_distance),
                     "time_stop_bars": time_stop_bars,
                     "cooldown_bars": cooldown_bars,
                     "priority": float(priority.loc[row.Index]),
