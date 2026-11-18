@@ -71,6 +71,21 @@ def _exit_event(position: _Position, bar: Row) -> tuple[float, str] | None:
     return None
 
 
+def _open_exit_event(position: _Position, bar: Row) -> tuple[float, str] | None:
+    open_price = float(bar["open"])
+    if position.side == "long":
+        if open_price <= position.stop:
+            return open_price, "stop"
+        if open_price >= position.take_profit:
+            return open_price, "take_profit"
+    else:
+        if open_price >= position.stop:
+            return open_price, "stop"
+        if open_price <= position.take_profit:
+            return open_price, "take_profit"
+    return None
+
+
 def run_backtest(
     candles: Iterable[Row],
     signals: Iterable[Row],
@@ -118,12 +133,18 @@ def run_backtest(
     equity = sizing.initial_equity
     trades: list[Trade] = []
 
-    def close_on_bar(symbol: str, bar: Row, event_time: object) -> bool:
+    def close_on_bar(
+        symbol: str, bar: Row, event_time: object, *, open_only: bool = False
+    ) -> bool:
         nonlocal equity
         position = positions.get(symbol)
         if position is None:
             return False
-        exit_event = _exit_event(position, bar)
+        exit_event = (
+            _open_exit_event(position, bar)
+            if open_only
+            else _exit_event(position, bar)
+        )
         if exit_event is None:
             return False
         reference, reason = exit_event
@@ -170,16 +191,14 @@ def run_backtest(
             position.funding_pnl += payment
             equity += payment
 
-        # Existing positions experience the opening/current-bar exit before
-        # position-cap admission for entries at this timestamp.
+        # Only exits knowable at the open can free capacity for open entries.
         existing_symbols = set(positions)
         for _, bar in current_bars:
             symbol = str(bar["symbol"])
             if symbol in existing_symbols:
-                close_on_bar(symbol, bar, event_time)
+                close_on_bar(symbol, bar, event_time, open_only=True)
 
         # Preserve input order to make position-cap selection deterministic.
-        entered_symbols: set[str] = set()
         for _, bar in current_bars:
             symbol = str(bar["symbol"])
             for signal in entries.get((event_time, symbol), []):
@@ -206,12 +225,12 @@ def run_backtest(
                     take_profit=float(signal["take_profit"]),
                 )
                 equity -= entry_fee
-                entered_symbols.add(symbol)
 
-        # A newly opened position remains exposed to the rest of its entry bar.
+        # Intrabar ranges are now known. They apply to both carried and newly
+        # opened positions, but cannot retroactively change open admission.
         for _, bar in current_bars:
             symbol = str(bar["symbol"])
-            if symbol in entered_symbols:
+            if symbol in positions:
                 close_on_bar(symbol, bar, event_time)
             last_price[symbol] = float(bar["close"])
 

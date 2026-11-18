@@ -265,3 +265,28 @@ def test_existing_gap_exit_releases_slot_before_same_open_new_entry():
 
     assert [trade.symbol for trade in trades] == ["BTC", "ETH"]
     assert trades[0].exit_time == trades[1].entry_time == ts(2)
+
+
+def test_intrabar_exit_does_not_retroactively_free_slot_for_same_open_entry():
+    execution, sizing = configs(max_positions=1)
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 101, 94, 95),
+        candle("ETH", 1, 100, 100, 100, 100),
+        candle("ETH", 2, 100, 101, 99, 100),
+        candle("ETH", 3, 100, 101, 94, 95),
+    ]
+
+    trades = run_backtest(
+        candles,
+        [
+            signal("BTC", 0, "long", stop=95, take_profit=200),
+            signal("ETH", 1, "long", stop=95, take_profit=200),
+        ],
+        [],
+        execution,
+        sizing,
+    )
+
+    assert [trade.symbol for trade in trades] == ["BTC"]
