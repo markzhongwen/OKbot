@@ -208,3 +208,60 @@ def test_rejects_entries_beyond_concurrent_position_limit():
 
     assert len(trades) == 2
     assert {trade.symbol for trade in trades} == {"BTC", "ETH"}
+
+
+def test_entry_fee_and_funding_immediately_reduce_equity_used_for_next_entry():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 101, 99, 100),
+        candle("BTC", 3, 100, 101, 89, 90),
+        candle("ETH", 1, 100, 100, 100, 100),
+        candle("ETH", 2, 100, 101, 98, 99),
+    ]
+
+    trades = run_backtest(
+        candles,
+        [
+            signal("BTC", 0, "long", stop=90, take_profit=200),
+            signal("ETH", 1, "long", stop=99, take_profit=200),
+        ],
+        [{"symbol": "BTC", "timestamp": ts(2), "rate": 0.01}],
+        execution,
+        sizing,
+    )
+
+    btc_trade = next(trade for trade in trades if trade.symbol == "BTC")
+    eth_trade = next(trade for trade in trades if trade.symbol == "ETH")
+    equity_before_eth = 1_000 - btc_trade.entry_fee + btc_trade.funding_pnl
+    expected_eth_notional = equity_before_eth * sizing.margin_fraction * sizing.leverage
+    assert eth_trade.quantity * eth_trade.entry_price == pytest.approx(
+        expected_eth_notional
+    )
+
+
+def test_existing_gap_exit_releases_slot_before_same_open_new_entry():
+    execution, sizing = configs(max_positions=1)
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 90, 91, 89, 90),
+        candle("ETH", 1, 100, 100, 100, 100),
+        candle("ETH", 2, 100, 101, 99, 100),
+        candle("ETH", 3, 100, 101, 94, 95),
+    ]
+
+    trades = run_backtest(
+        candles,
+        [
+            signal("BTC", 0, "long", stop=95, take_profit=200),
+            signal("ETH", 1, "long", stop=95, take_profit=200),
+        ],
+        [],
+        execution,
+        sizing,
+    )
+
+    assert [trade.symbol for trade in trades] == ["BTC", "ETH"]
+    assert trades[0].exit_time == trades[1].entry_time == ts(2)

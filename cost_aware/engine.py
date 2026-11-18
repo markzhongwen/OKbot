@@ -83,21 +83,17 @@ def run_backtest(
     bars_by_symbol: dict[str, list[Row]] = {}
     for bar in bars:
         bars_by_symbol.setdefault(str(bar["symbol"]), []).append(bar)
-    for symbol_bars in bars_by_symbol.values():
+    bar_indexes: dict[tuple[str, object], int] = {}
+    for symbol, symbol_bars in bars_by_symbol.items():
         symbol_bars.sort(key=lambda row: row["timestamp"])
+        for index, bar in enumerate(symbol_bars):
+            bar_indexes[(symbol, bar["timestamp"])] = index
 
     entries: dict[tuple[object, str], list[Row]] = {}
     for signal in signals:
         symbol = str(signal["symbol"])
         symbol_bars = bars_by_symbol.get(symbol, [])
-        signal_index = next(
-            (
-                index
-                for index, bar in enumerate(symbol_bars)
-                if bar["timestamp"] == signal["timestamp"]
-            ),
-            None,
-        )
+        signal_index = bar_indexes.get((symbol, signal["timestamp"]))
         if signal_index is None:
             continue
         entry_index = signal_index + execution.signal_lag_bars
@@ -105,11 +101,12 @@ def run_backtest(
             entry_time = symbol_bars[entry_index]["timestamp"]
             entries.setdefault((entry_time, symbol), []).append(signal)
 
-    funding_by_event: dict[tuple[object, str], list[float]] = {}
+    funding_by_event: dict[object, list[tuple[str, float]]] = {}
     event_times = {bar["timestamp"] for bar in bars}
     for payment in funding:
-        key = (payment["timestamp"], str(payment["symbol"]))
-        funding_by_event.setdefault(key, []).append(float(payment["rate"]))
+        funding_by_event.setdefault(payment["timestamp"], []).append(
+            (str(payment["symbol"]), float(payment["rate"]))
+        )
         event_times.add(payment["timestamp"])
 
     bars_by_event: dict[object, list[tuple[int, Row]]] = {}
@@ -121,14 +118,44 @@ def run_backtest(
     equity = sizing.initial_equity
     trades: list[Trade] = []
 
+    def close_on_bar(symbol: str, bar: Row, event_time: object) -> bool:
+        nonlocal equity
+        position = positions.get(symbol)
+        if position is None:
+            return False
+        exit_event = _exit_event(position, bar)
+        if exit_event is None:
+            return False
+        reference, reason = exit_event
+        action = "sell" if position.side == "long" else "buy"
+        exit_price = _adverse_fill(reference, action, execution.slippage_per_side)
+        trade = Trade(
+            symbol=symbol,
+            side=position.side,
+            entry_time=position.entry_time,
+            exit_time=event_time,
+            entry_price=position.entry_price,
+            exit_price=exit_price,
+            quantity=position.quantity,
+            entry_fee=position.entry_fee,
+            exit_fee=position.quantity * exit_price * execution.fee_per_side,
+            funding_pnl=position.funding_pnl,
+            exit_reason=reason,
+        )
+        trades.append(trade)
+        # Entry fees and funding were booked when their events occurred.
+        equity += trade.gross_pnl - trade.exit_fee
+        del positions[symbol]
+        return True
+
     for event_time in sorted(event_times):
-        current_bars = bars_by_event.get(event_time, [])
+        current_bars = sorted(bars_by_event.get(event_time, []))
         bar_for_symbol = {str(bar["symbol"]): bar for _, bar in current_bars}
 
         # Funding precedes fills at the same timestamp: a new position was not
         # already open at the published settlement boundary.
-        for (timestamp, symbol), rates in funding_by_event.items():
-            if timestamp != event_time or symbol not in positions:
+        for symbol, rate in funding_by_event.get(event_time, []):
+            if symbol not in positions:
                 continue
             mark = (
                 float(bar_for_symbol[symbol]["open"])
@@ -139,11 +166,21 @@ def run_backtest(
                 continue
             position = positions[symbol]
             direction = 1 if position.side == "long" else -1
-            for rate in rates:
-                position.funding_pnl -= direction * position.quantity * mark * rate
+            payment = -direction * position.quantity * mark * rate
+            position.funding_pnl += payment
+            equity += payment
+
+        # Existing positions experience the opening/current-bar exit before
+        # position-cap admission for entries at this timestamp.
+        existing_symbols = set(positions)
+        for _, bar in current_bars:
+            symbol = str(bar["symbol"])
+            if symbol in existing_symbols:
+                close_on_bar(symbol, bar, event_time)
 
         # Preserve input order to make position-cap selection deterministic.
-        for _, bar in sorted(current_bars):
+        entered_symbols: set[str] = set()
+        for _, bar in current_bars:
             symbol = str(bar["symbol"])
             for signal in entries.get((event_time, symbol), []):
                 if symbol in positions or len(positions) >= sizing.max_positions:
@@ -157,48 +194,25 @@ def run_backtest(
                 )
                 notional = equity * sizing.margin_fraction * sizing.leverage
                 quantity = notional / entry_price
+                entry_fee = quantity * entry_price * execution.fee_per_side
                 positions[symbol] = _Position(
                     symbol=symbol,
                     side=side,
                     entry_time=event_time,
                     entry_price=entry_price,
                     quantity=quantity,
-                    entry_fee=quantity * entry_price * execution.fee_per_side,
+                    entry_fee=entry_fee,
                     stop=float(signal["stop"]),
                     take_profit=float(signal["take_profit"]),
                 )
+                equity -= entry_fee
+                entered_symbols.add(symbol)
 
-        for _, bar in sorted(current_bars):
+        # A newly opened position remains exposed to the rest of its entry bar.
+        for _, bar in current_bars:
             symbol = str(bar["symbol"])
-            position = positions.get(symbol)
-            if position is None:
-                last_price[symbol] = float(bar["close"])
-                continue
-            exit_event = _exit_event(position, bar)
-            if exit_event is not None:
-                reference, reason = exit_event
-                action = "sell" if position.side == "long" else "buy"
-                exit_price = _adverse_fill(
-                    reference, action, execution.slippage_per_side
-                )
-                trade = Trade(
-                    symbol=symbol,
-                    side=position.side,
-                    entry_time=position.entry_time,
-                    exit_time=event_time,
-                    entry_price=position.entry_price,
-                    exit_price=exit_price,
-                    quantity=position.quantity,
-                    entry_fee=position.entry_fee,
-                    exit_fee=(
-                        position.quantity * exit_price * execution.fee_per_side
-                    ),
-                    funding_pnl=position.funding_pnl,
-                    exit_reason=reason,
-                )
-                trades.append(trade)
-                equity += trade.net_pnl
-                del positions[symbol]
+            if symbol in entered_symbols:
+                close_on_bar(symbol, bar, event_time)
             last_price[symbol] = float(bar["close"])
 
     return trades
