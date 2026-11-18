@@ -24,13 +24,21 @@ def candle(symbol: str, hour: int, open_: float, high: float, low: float, close:
     }
 
 
-def signal(symbol: str, hour: int, side: str, stop: float, take_profit: float):
+def signal(
+    symbol: str,
+    hour: int,
+    side: str,
+    stop: float,
+    take_profit: float,
+    **lifecycle,
+):
     return {
         "symbol": symbol,
         "timestamp": ts(hour),
         "side": side,
         "stop": stop,
         "take_profit": take_profit,
+        **lifecycle,
     }
 
 
@@ -290,3 +298,157 @@ def test_intrabar_exit_does_not_retroactively_free_slot_for_same_open_entry():
     )
 
     assert [trade.symbol for trade in trades] == ["BTC"]
+
+
+def test_time_stop_exits_at_close_with_adverse_slippage_after_full_holding_bars():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 101, 103, 100, 102),
+    ]
+
+    trade = run_backtest(
+        candles,
+        [
+            signal(
+                "BTC",
+                0,
+                "long",
+                stop=90,
+                take_profit=200,
+                time_stop_bars=2,
+            )
+        ],
+        [],
+        execution,
+        sizing,
+    )[0]
+
+    assert trade.exit_time == ts(2)
+    assert trade.exit_reason == "time_stop"
+    assert trade.exit_price == pytest.approx(102 * 0.9998)
+
+
+def test_intrabar_stop_precedes_time_stop_on_same_bar():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 101, 94, 98),
+    ]
+
+    trade = run_backtest(
+        candles,
+        [
+            signal(
+                "BTC",
+                0,
+                "long",
+                stop=95,
+                take_profit=200,
+                time_stop_bars=2,
+            )
+        ],
+        [],
+        execution,
+        sizing,
+    )[0]
+
+    assert trade.exit_reason == "stop"
+    assert trade.exit_price == pytest.approx(95 * 0.9998)
+
+
+def test_time_stop_at_close_does_not_release_slot_for_same_bar_open_entry():
+    execution, sizing = configs(max_positions=1)
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 101, 99, 100),
+        candle("ETH", 1, 100, 100, 100, 100),
+        candle("ETH", 2, 100, 101, 99, 100),
+        candle("ETH", 3, 100, 101, 94, 95),
+    ]
+
+    trades = run_backtest(
+        candles,
+        [
+            signal(
+                "BTC",
+                0,
+                "long",
+                stop=90,
+                take_profit=200,
+                time_stop_bars=2,
+            ),
+            signal("ETH", 1, "long", stop=95, take_profit=200),
+        ],
+        [],
+        execution,
+        sizing,
+    )
+
+    assert [trade.symbol for trade in trades] == ["BTC"]
+    assert trades[0].exit_reason == "time_stop"
+
+
+def test_cooldown_uses_symbol_bar_indexes_and_allows_exact_boundary():
+    execution, sizing = configs()
+    candles = [
+        candle("BTC", 0, 100, 100, 100, 100),
+        candle("BTC", 1, 100, 101, 99, 100),
+        candle("BTC", 2, 100, 101, 94, 98),
+        candle("BTC", 3, 100, 101, 99, 100),
+        candle("BTC", 4, 100, 101, 99, 100),
+        candle("BTC", 5, 100, 101, 94, 98),
+    ]
+
+    trades = run_backtest(
+        candles,
+        [
+            signal(
+                "BTC", 0, "long", 95, 200, cooldown_bars=2
+            ),
+            signal(
+                "BTC", 2, "long", 95, 200, cooldown_bars=2
+            ),
+            signal(
+                "BTC", 3, "long", 95, 200, cooldown_bars=2
+            ),
+        ],
+        [],
+        execution,
+        sizing,
+    )
+
+    assert [trade.entry_time for trade in trades] == [ts(1), ts(4)]
+    assert all(trade.exit_reason == "stop" for trade in trades)
+
+
+def test_entry_capacity_prefers_priority_then_symbol_over_input_order():
+    execution, sizing = configs(max_positions=2)
+    candles = []
+    priorities = {"BTC": 1.0, "XRP": 2.0, "SOL": 2.0, "ETH": 3.0}
+    signals = []
+    for symbol in ("BTC", "XRP", "SOL", "ETH"):
+        candles.extend(
+            [
+                candle(symbol, 0, 100, 100, 100, 100),
+                candle(symbol, 1, 100, 101, 99, 100),
+                candle(symbol, 2, 100, 101, 94, 95),
+            ]
+        )
+        signals.append(
+            signal(
+                symbol,
+                0,
+                "long",
+                stop=95,
+                take_profit=200,
+                priority=priorities[symbol],
+            )
+        )
+
+    trades = run_backtest(candles, signals, [], execution, sizing)
+
+    assert {trade.symbol for trade in trades} == {"ETH", "SOL"}

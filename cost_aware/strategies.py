@@ -19,7 +19,20 @@ import pandas as pd
 
 Parameter = int | float | str
 ParameterSet = Mapping[str, Parameter]
-SIGNAL_COLUMNS = ["symbol", "timestamp", "side", "stop", "take_profit"]
+SIGNAL_COLUMNS = [
+    "symbol",
+    "timestamp",
+    "side",
+    "stop",
+    "take_profit",
+    "time_stop_bars",
+    "cooldown_bars",
+    "priority",
+]
+LIFECYCLE_SPACE: tuple[tuple[str, tuple[Parameter, ...]], ...] = (
+    ("time_stop_bars", (24,)),
+    ("cooldown_bars", (6,)),
+)
 
 
 @dataclass(frozen=True)
@@ -52,6 +65,7 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
             ("atr_window", (14,)),
             ("stop_atr", (2.0, 3.5)),
             ("take_profit_atr", (3.0, 4.0)),
+            *LIFECYCLE_SPACE,
         ),
     ),
     "keltner": StrategySpec(
@@ -63,6 +77,7 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
             ("band_atr", (1.5, 2.0)),
             ("stop_atr", (2.0, 3.5)),
             ("take_profit_atr", (4.0,)),
+            *LIFECYCLE_SPACE,
         ),
     ),
     "rsi_mean_reversion": StrategySpec(
@@ -74,6 +89,7 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
             ("atr_window", (14,)),
             ("stop_atr", (2.0, 3.5)),
             ("take_profit_atr", (3.0,)),
+            *LIFECYCLE_SPACE,
         ),
     ),
     "vwap_mean_reversion": StrategySpec(
@@ -85,6 +101,7 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
             ("deviation_atr", (1.0, 1.5)),
             ("stop_atr", (2.0, 3.5)),
             ("take_profit_atr", (3.0,)),
+            *LIFECYCLE_SPACE,
         ),
     ),
     "extreme_reversal": StrategySpec(
@@ -99,6 +116,7 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
             ("atr_window", (14,)),
             ("stop_atr", (3.5,)),
             ("take_profit_atr", (4.0,)),
+            *LIFECYCLE_SPACE,
         ),
     ),
     "cross_sectional_momentum": StrategySpec(
@@ -106,10 +124,11 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
         family="cross_sectional_rotation",
         parameter_space=(
             ("lookback", (12, 24)),
-            ("selection_count", (1, 2)),
+            ("selection_count", (1,)),
             ("atr_window", (14,)),
             ("stop_atr", (2.0, 3.5)),
             ("take_profit_atr", (4.0,)),
+            *LIFECYCLE_SPACE,
         ),
     ),
     "regime_gated": StrategySpec(
@@ -122,6 +141,7 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
             ("atr_window", (14,)),
             ("stop_atr", (3.5,)),
             ("take_profit_atr", (4.0,)),
+            *LIFECYCLE_SPACE,
         ),
     ),
 }
@@ -182,25 +202,37 @@ def generate_signals(
     )
 
     if resolved.name == "donchian":
-        long_mask, short_mask = _donchian(frame, values)
-        return _directional_signals(frame, long_mask, short_mask, values)
+        long_mask, short_mask, priority = _donchian(frame, values)
+        return _directional_signals(
+            frame, long_mask, short_mask, values, priority
+        )
     if resolved.name == "keltner":
-        long_mask, short_mask = _keltner(frame, values)
-        return _directional_signals(frame, long_mask, short_mask, values)
+        long_mask, short_mask, priority = _keltner(frame, values)
+        return _directional_signals(
+            frame, long_mask, short_mask, values, priority
+        )
     if resolved.name == "rsi_mean_reversion":
-        long_mask, short_mask = _rsi_mean_reversion(frame, values)
-        return _directional_signals(frame, long_mask, short_mask, values)
+        long_mask, short_mask, priority = _rsi_mean_reversion(frame, values)
+        return _directional_signals(
+            frame, long_mask, short_mask, values, priority
+        )
     if resolved.name == "vwap_mean_reversion":
-        long_mask, short_mask = _vwap_mean_reversion(frame, values)
-        return _directional_signals(frame, long_mask, short_mask, values)
+        long_mask, short_mask, priority = _vwap_mean_reversion(frame, values)
+        return _directional_signals(
+            frame, long_mask, short_mask, values, priority
+        )
     if resolved.name == "extreme_reversal":
-        long_mask, short_mask = _extreme_reversal(frame, values)
-        return _directional_signals(frame, long_mask, short_mask, values)
+        long_mask, short_mask, priority = _extreme_reversal(frame, values)
+        return _directional_signals(
+            frame, long_mask, short_mask, values, priority
+        )
     if resolved.name == "cross_sectional_momentum":
         return _cross_sectional_momentum(frame, values)
     if resolved.name == "regime_gated":
-        long_mask, short_mask = _regime_gated(frame, values)
-        return _directional_signals(frame, long_mask, short_mask, values)
+        long_mask, short_mask, priority = _regime_gated(frame, values)
+        return _directional_signals(
+            frame, long_mask, short_mask, values, priority
+        )
     raise ValueError(f"unsupported strategy: {resolved.name}")
 
 
@@ -232,6 +264,13 @@ def _positive_int(params: ParameterSet, name: str) -> int:
     value = params[name]
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _nonnegative_int(params: ParameterSet, name: str) -> int:
+    value = params[name]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a nonnegative integer")
     return value
 
 
@@ -303,9 +342,23 @@ def _average_true_range(group: pd.DataFrame, window: int) -> pd.Series:
     return true_range.rolling(window, min_periods=window).mean()
 
 
+def _causal_pct_change(group: pd.DataFrame, periods: int) -> pd.Series:
+    """Return changes only when observed rows span the expected bar duration."""
+    differences = group["timestamp"].diff().dropna()
+    positive = differences.where(differences > pd.Timedelta(0))
+    if positive.dropna().empty:
+        return pd.Series(np.nan, index=group.index, dtype=float)
+    # The smallest interval observed so far is a causal estimate of the base
+    # timeframe; larger multiples indicate one or more missing bars.
+    interval = positive.reindex(group.index).cummin()
+    elapsed = group["timestamp"] - group["timestamp"].shift(periods)
+    change = group["close"] / group["close"].shift(periods) - 1
+    return change.where(elapsed == interval * periods)
+
+
 def _donchian(
     frame: pd.DataFrame, params: ParameterSet
-) -> tuple[pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     lookback = _positive_int(params, "lookback")
     prior_high = _group_indicator(
         frame,
@@ -321,12 +374,19 @@ def _donchian(
         .min()
         .shift(1),
     )
-    return frame["close"] > prior_high, frame["close"] < prior_low
+    long_distance = frame["close"] - prior_high
+    short_distance = prior_low - frame["close"]
+    priority = pd.concat([long_distance, short_distance], axis=1).max(axis=1)
+    return (
+        long_distance > 0,
+        short_distance > 0,
+        priority.clip(lower=0) / frame["atr"],
+    )
 
 
 def _keltner(
     frame: pd.DataFrame, params: ParameterSet
-) -> tuple[pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     window = _positive_int(params, "ema_window")
     multiplier = _positive_number(params, "band_atr")
     middle = _group_indicator(
@@ -335,15 +395,21 @@ def _keltner(
             span=window, adjust=False, min_periods=window
         ).mean(),
     )
+    upper = middle + multiplier * frame["atr"]
+    lower = middle - multiplier * frame["atr"]
+    long_distance = frame["close"] - upper
+    short_distance = lower - frame["close"]
+    priority = pd.concat([long_distance, short_distance], axis=1).max(axis=1)
     return (
-        frame["close"] > middle + multiplier * frame["atr"],
-        frame["close"] < middle - multiplier * frame["atr"],
+        long_distance > 0,
+        short_distance > 0,
+        priority.clip(lower=0) / frame["atr"],
     )
 
 
 def _rsi_mean_reversion(
     frame: pd.DataFrame, params: ParameterSet
-) -> tuple[pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     window = _positive_int(params, "rsi_window")
     threshold = _positive_number(params, "threshold")
     if threshold >= 50:
@@ -362,12 +428,12 @@ def _rsi_mean_reversion(
         return rsi.mask(denominator == 0, 50.0)
 
     rsi = _group_indicator(frame, calculate)
-    return rsi <= threshold, rsi >= 100 - threshold
+    return rsi <= threshold, rsi >= 100 - threshold, (rsi - 50).abs()
 
 
 def _vwap_mean_reversion(
     frame: pd.DataFrame, params: ParameterSet
-) -> tuple[pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     window = _positive_int(params, "vwap_window")
     deviation = _positive_number(params, "deviation_atr")
 
@@ -380,15 +446,17 @@ def _vwap_mean_reversion(
         return numerator / denominator.replace(0, np.nan)
 
     rolling_vwap = _group_indicator(frame, calculate)
+    distance = (frame["close"] - rolling_vwap) / frame["atr"]
     return (
-        frame["close"] < rolling_vwap - deviation * frame["atr"],
-        frame["close"] > rolling_vwap + deviation * frame["atr"],
+        distance < -deviation,
+        distance > deviation,
+        distance.abs(),
     )
 
 
 def _extreme_reversal(
     frame: pd.DataFrame, params: ParameterSet
-) -> tuple[pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     return_lookback = _positive_int(params, "return_lookback")
     volume_window = _positive_int(params, "volume_window")
     threshold = _positive_number(params, "return_threshold")
@@ -398,7 +466,7 @@ def _extreme_reversal(
         raise ValueError("direction must be 'both' or 'short'")
 
     returns = _group_indicator(
-        frame, lambda group: group["close"].pct_change(return_lookback)
+        frame, lambda group: _causal_pct_change(group, return_lookback)
     )
     prior_volume = _group_indicator(
         frame,
@@ -411,7 +479,7 @@ def _extreme_reversal(
     long_mask = (returns <= -threshold) & volume_extreme
     if direction == "short":
         long_mask &= False
-    return long_mask, (returns >= threshold) & volume_extreme
+    return long_mask, (returns >= threshold) & volume_extreme, returns.abs()
 
 
 def _cross_sectional_momentum(
@@ -420,7 +488,7 @@ def _cross_sectional_momentum(
     lookback = _positive_int(params, "lookback")
     selection_count = _positive_int(params, "selection_count")
     momentum = _group_indicator(
-        frame, lambda group: group["close"].pct_change(lookback)
+        frame, lambda group: _causal_pct_change(group, lookback)
     )
     long_mask = pd.Series(False, index=frame.index)
     short_mask = pd.Series(False, index=frame.index)
@@ -435,12 +503,14 @@ def _cross_sectional_momentum(
         )
         long_mask.loc[ordered.index[:selection_count]] = True
         short_mask.loc[ordered.index[-selection_count:]] = True
-    return _directional_signals(frame, long_mask, short_mask, params)
+    return _directional_signals(
+        frame, long_mask, short_mask, params, momentum.abs()
+    )
 
 
 def _regime_gated(
     frame: pd.DataFrame, params: ParameterSet
-) -> tuple[pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     fast_window = _positive_int(params, "fast_window")
     slow_window = _positive_int(params, "slow_window")
     breakout_lookback = _positive_int(params, "breakout_lookback")
@@ -480,6 +550,7 @@ def _regime_gated(
     return (
         (fast > slow) & (frame["close"] > prior_high),
         (fast < slow) & (frame["close"] < prior_low),
+        (fast - slow).abs() / frame["atr"],
     )
 
 
@@ -488,12 +559,15 @@ def _directional_signals(
     long_mask: pd.Series,
     short_mask: pd.Series,
     params: ParameterSet,
+    priority: pd.Series,
 ) -> pd.DataFrame:
     stop_atr = _positive_number(params, "stop_atr")
     take_profit_atr = _positive_number(params, "take_profit_atr")
+    time_stop_bars = _nonnegative_int(params, "time_stop_bars")
+    cooldown_bars = _nonnegative_int(params, "cooldown_bars")
     records: list[dict[str, object]] = []
     for side, mask in (("long", long_mask), ("short", short_mask)):
-        for row in frame.loc[mask & frame["atr"].notna()].itertuples(index=False):
+        for row in frame.loc[mask & frame["atr"].notna()].itertuples():
             if side == "long":
                 stop = row.close - stop_atr * row.atr
                 take_profit = row.close + take_profit_atr * row.atr
@@ -509,6 +583,9 @@ def _directional_signals(
                     "side": side,
                     "stop": float(stop),
                     "take_profit": float(take_profit),
+                    "time_stop_bars": time_stop_bars,
+                    "cooldown_bars": cooldown_bars,
+                    "priority": float(priority.loc[row.Index]),
                 }
             )
     if not records:
