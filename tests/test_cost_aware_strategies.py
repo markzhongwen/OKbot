@@ -260,7 +260,12 @@ def test_neighbor_params_changes_exactly_one_parameter_by_one_grid_step():
 def test_each_strategy_family_emits_expected_closed_bar_signals(strategy_name):
     frame, params, expected = CASES[strategy_name]
 
-    signals = generate_signals(frame, STRATEGY_SPECS[strategy_name], params)
+    signals = generate_signals(
+        frame,
+        STRATEGY_SPECS[strategy_name],
+        params,
+        expected_cadence="1h",
+    )
 
     assert list(signals.columns) == REQUIRED_SIGNAL_COLUMNS
     assert expected.issubset(set(zip(signals["symbol"], signals["side"])))
@@ -278,7 +283,12 @@ def test_extreme_reversal_short_only_never_emits_longs():
     )
     params = CASES["extreme_reversal"][1]
 
-    signals = generate_signals(frame, STRATEGY_SPECS["extreme_reversal"], params)
+    signals = generate_signals(
+        frame,
+        STRATEGY_SPECS["extreme_reversal"],
+        params,
+        expected_cadence="1h",
+    )
 
     assert not signals.empty
     assert set(signals["side"]) == {"short"}
@@ -288,7 +298,10 @@ def test_risk_distances_use_signal_bar_atr_for_next_open_anchoring():
     frame, params, _ = CASES["donchian"]
 
     signal = generate_signals(
-        frame, STRATEGY_SPECS["donchian"], params
+        frame,
+        STRATEGY_SPECS["donchian"],
+        params,
+        expected_cadence="1h",
     ).iloc[-1]
     true_range = pd.concat(
         [
@@ -309,6 +322,13 @@ def test_risk_distances_use_signal_bar_atr_for_next_open_anchoring():
     )
     assert "stop" not in signal.index
     assert "take_profit" not in signal.index
+
+
+def test_generate_signals_requires_explicit_expected_cadence():
+    frame, params, _ = CASES["donchian"]
+
+    with pytest.raises(ValueError, match="expected_cadence.*required"):
+        generate_signals(frame, STRATEGY_SPECS["donchian"], params)
 
 
 def long_tail_bars(periods: int = 240) -> pd.DataFrame:

@@ -4,7 +4,8 @@ Signal timestamps identify fully closed bars. Indicators and ATR risk distances
 use only that bar and its history; :mod:`cost_aware.engine` applies the lag,
 anchors those distances to the unadjusted next open, and enforces time stops and
 cooldowns. Return strategies accept an explicit expected cadence so missing
-bars cannot masquerade as one-period returns.
+bars cannot masquerade as one-period returns. Callers must always provide that
+cadence explicitly.
 """
 
 from __future__ import annotations
@@ -193,9 +194,8 @@ def generate_signals(
     Input accepts the cached parquet timestamp name ``open_time`` or the
     engine-facing name ``timestamp``. Indicators are grouped by symbol and use
     only each row and earlier rows; prior-window breakouts explicitly shift the
-    channel by one bar. ``expected_cadence`` should be supplied by the research
-    runner from its timeframe. If omitted, the smallest positive interval in
-    the complete input is used as a deterministic fallback.
+    channel by one bar. ``expected_cadence`` is required for every strategy so
+    the research runner always states the known timeframe explicitly.
     """
     resolved = _resolve_spec(spec)
     values = _validate_parameter_keys(resolved, params)
@@ -204,7 +204,7 @@ def generate_signals(
     frame["atr"] = _group_indicator(
         frame, lambda group: _average_true_range(group, atr_window)
     )
-    cadence = _resolve_expected_cadence(frame, expected_cadence)
+    cadence = _resolve_expected_cadence(expected_cadence)
 
     if resolved.name == "donchian":
         long_mask, short_mask, priority = _donchian(frame, values)
@@ -330,13 +330,10 @@ def _prepare_candles(candles: pd.DataFrame) -> pd.DataFrame:
 
 
 def _resolve_expected_cadence(
-    frame: pd.DataFrame,
     expected_cadence: pd.Timedelta | str | None,
-) -> pd.Timedelta | None:
+) -> pd.Timedelta:
     if expected_cadence is None:
-        differences = frame.groupby("symbol", sort=False)["timestamp"].diff()
-        positive = differences[differences > pd.Timedelta(0)]
-        return positive.min() if not positive.empty else None
+        raise ValueError("expected_cadence is required")
     try:
         cadence = pd.Timedelta(expected_cadence)
     except (TypeError, ValueError) as error:
@@ -369,11 +366,9 @@ def _average_true_range(group: pd.DataFrame, window: int) -> pd.Series:
 def _causal_pct_change(
     group: pd.DataFrame,
     periods: int,
-    expected_cadence: pd.Timedelta | None,
+    expected_cadence: pd.Timedelta,
 ) -> pd.Series:
     """Return changes only when observed rows span the expected bar duration."""
-    if expected_cadence is None:
-        return pd.Series(np.nan, index=group.index, dtype=float)
     elapsed = group["timestamp"] - group["timestamp"].shift(periods)
     change = group["close"] / group["close"].shift(periods) - 1
     return change.where(elapsed == expected_cadence * periods)
@@ -480,7 +475,7 @@ def _vwap_mean_reversion(
 def _extreme_reversal(
     frame: pd.DataFrame,
     params: ParameterSet,
-    expected_cadence: pd.Timedelta | None,
+    expected_cadence: pd.Timedelta,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     return_lookback = _positive_int(params, "return_lookback")
     volume_window = _positive_int(params, "volume_window")
@@ -513,7 +508,7 @@ def _extreme_reversal(
 def _cross_sectional_momentum(
     frame: pd.DataFrame,
     params: ParameterSet,
-    expected_cadence: pd.Timedelta | None,
+    expected_cadence: pd.Timedelta,
 ) -> pd.DataFrame:
     lookback = _positive_int(params, "lookback")
     selection_count = _positive_int(params, "selection_count")
