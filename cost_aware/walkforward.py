@@ -1,0 +1,488 @@
+"""Leakage-resistant walk-forward selection and event-equity metrics.
+
+The backtest callback is deliberately independent of data loading.  It receives
+``(params, fold, sizing, phase)`` where phase is ``"is"`` or ``"oos"``, and
+returns ``(event_equity, trades)``.  Equity must contain the actual event-time
+account value, including values at both window boundaries; metrics are never
+rebuilt from exit-day trade PnL.
+"""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import dataclass
+from math import isfinite, sqrt
+from numbers import Real
+from typing import Callable, Iterable, Literal, Mapping, Sequence
+
+import numpy as np
+import pandas as pd
+
+
+Params = Mapping[str, object]
+Phase = Literal["is", "oos"]
+BacktestOutput = tuple[pd.Series, Sequence[object]]
+BacktestCallback = Callable[
+    [Params, "Fold", object, Phase],
+    BacktestOutput | None,
+]
+NeighborCallback = Callable[[Params], Iterable[Params]]
+
+
+@dataclass(frozen=True)
+class Fold:
+    """One rolling in-sample window and its immediately adjacent OOS window.
+
+    Window boundaries are half-open for data selection: ``[start, end)``.
+    An equity observation at ``end`` is allowed because it can represent the
+    account value after the final interval in the window.
+    """
+
+    index: int
+    is_start: pd.Timestamp
+    is_end: pd.Timestamp
+    oos_start: pd.Timestamp
+    oos_end: pd.Timestamp
+
+    def __post_init__(self) -> None:
+        boundaries = (
+            self.is_start,
+            self.is_end,
+            self.oos_start,
+            self.oos_end,
+        )
+        if self.index < 0:
+            raise ValueError("fold index cannot be negative")
+        if any(not isinstance(value, pd.Timestamp) for value in boundaries):
+            raise TypeError("fold boundaries must be pandas timestamps")
+        if any(value.tzinfo is None for value in boundaries):
+            raise ValueError("fold boundaries must be timezone-aware")
+        if not self.is_start < self.is_end:
+            raise ValueError("in-sample window must have positive duration")
+        if self.is_end != self.oos_start:
+            raise ValueError("OOS must immediately follow in-sample")
+        if not self.oos_start < self.oos_end:
+            raise ValueError("OOS window must have positive duration")
+
+
+@dataclass(frozen=True)
+class Metrics:
+    """Metrics derived from event equity and closed trades."""
+
+    total_return: float
+    sharpe: float
+    max_drawdown: float
+    trades: int
+    win_rate: float
+    fold_returns: tuple[float, ...] = ()
+
+
+@dataclass(frozen=True)
+class FoldEvaluation:
+    """The exact IS choice frozen before its adjacent OOS evaluation."""
+
+    fold: Fold
+    selected_params: dict[str, object] | None
+    is_metrics: Metrics | None
+    oos_metrics: Metrics | None
+
+
+@dataclass(frozen=True)
+class CandidateEvaluation:
+    """Walk-forward OOS result plus first-neighbor robustness."""
+
+    fold_results: tuple[FoldEvaluation, ...]
+    metrics: Metrics
+    neighbor_robustness: float
+    neighbor_positive: int
+    neighbor_valid: int
+
+
+def build_folds(
+    start: object,
+    *,
+    is_days: int = 45,
+    oos_days: int = 15,
+    n_folds: int = 3,
+    step_days: int | None = None,
+) -> tuple[Fold, ...]:
+    """Build fixed-length rolling IS windows with non-overlapping OOS windows.
+
+    Defaults produce three 15-day OOS folds after rolling 45-day IS windows,
+    spanning 90 days in total.  ``step_days`` is configurable but cannot be
+    shorter than ``oos_days``, because OOS overlap would double count evidence.
+    """
+
+    values = {
+        "is_days": is_days,
+        "oos_days": oos_days,
+        "n_folds": n_folds,
+    }
+    if step_days is not None:
+        values["step_days"] = step_days
+    for name, value in values.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    step = oos_days if step_days is None else step_days
+    if step < oos_days:
+        raise ValueError("step_days cannot be shorter than oos_days")
+
+    origin = pd.Timestamp(start)
+    if origin.tzinfo is None:
+        origin = origin.tz_localize("UTC")
+    else:
+        origin = origin.tz_convert("UTC")
+    is_delta = pd.Timedelta(days=is_days)
+    oos_delta = pd.Timedelta(days=oos_days)
+    step_delta = pd.Timedelta(days=step)
+    folds = []
+    for index in range(n_folds):
+        is_start = origin + index * step_delta
+        is_end = is_start + is_delta
+        folds.append(
+            Fold(
+                index=index,
+                is_start=is_start,
+                is_end=is_end,
+                oos_start=is_end,
+                oos_end=is_end + oos_delta,
+            )
+        )
+    return tuple(folds)
+
+
+def compute_metrics(
+    equity: pd.Series,
+    trades: Sequence[object],
+    *,
+    fold_returns: Iterable[float] = (),
+) -> Metrics:
+    """Compute return, daily Sharpe, drawdown, and trade statistics.
+
+    Account values are sampled at consecutive UTC day boundaries and forward
+    filled.  Consequently quiet days contribute zero daily returns instead of
+    disappearing from the Sharpe sample.  Intraday event values remain in the
+    drawdown path.
+    """
+
+    event_equity = _coerce_equity(equity)
+    closed_trades = list(trades)
+    normalized_fold_returns = tuple(float(value) for value in fold_returns)
+    if any(not isfinite(value) for value in normalized_fold_returns):
+        raise ValueError("fold returns must be finite")
+
+    total_return = float(event_equity.iloc[-1] / event_equity.iloc[0] - 1.0)
+    running_peak = event_equity.cummax()
+    max_drawdown = float((event_equity / running_peak - 1.0).min())
+
+    if not closed_trades:
+        sharpe = 0.0
+        win_rate = 0.0
+    else:
+        daily_returns = _daily_returns(event_equity)
+        standard_deviation = float(daily_returns.std(ddof=1))
+        if (
+            len(daily_returns) < 2
+            or not isfinite(standard_deviation)
+            or standard_deviation == 0.0
+        ):
+            sharpe = 0.0
+        else:
+            sharpe = float(
+                daily_returns.mean() / standard_deviation * sqrt(365.0)
+            )
+        wins = sum(_trade_net_pnl(trade) > 0.0 for trade in closed_trades)
+        win_rate = wins / len(closed_trades)
+
+    return Metrics(
+        total_return=total_return,
+        sharpe=sharpe,
+        max_drawdown=max_drawdown,
+        trades=len(closed_trades),
+        win_rate=float(win_rate),
+        fold_returns=normalized_fold_returns,
+    )
+
+
+def evaluate_candidate(
+    parameter_grid: Iterable[Params],
+    folds: Iterable[Fold],
+    *,
+    sizing: object,
+    callback: BacktestCallback,
+    neighbors: NeighborCallback,
+) -> CandidateEvaluation:
+    """Select independently on each IS fold, freeze, and evaluate adjacent OOS.
+
+    IS candidates rank by annualized daily Sharpe, then compounded return.
+    Input grid order is the deterministic final tie-break.  Only the chosen
+    parameters are sent to that fold's OOS callback.  First neighbors of each
+    frozen choice are evaluated on that same OOS window.
+
+    A callback may return ``None`` to mark an unavailable/invalid evaluation.
+    Invalid neighbors are excluded from the robustness denominator; valid
+    losing and flat neighbors remain in it.
+    """
+
+    params = [deepcopy(dict(candidate)) for candidate in parameter_grid]
+    if not params:
+        raise ValueError("parameter_grid cannot be empty")
+    ordered_folds = tuple(folds)
+    _validate_folds(ordered_folds)
+
+    fold_results: list[FoldEvaluation] = []
+    oos_equities: list[pd.Series] = []
+    oos_trades: list[object] = []
+    fold_returns: list[float] = []
+    neighbor_positive = 0
+    neighbor_valid = 0
+
+    for fold in ordered_folds:
+        best_params: dict[str, object] | None = None
+        best_metrics: Metrics | None = None
+        best_score: tuple[float, float] | None = None
+
+        for candidate in params:
+            output = callback(deepcopy(candidate), fold, sizing, "is")
+            resolved = _resolve_output(output, fold, "is")
+            if resolved is None:
+                continue
+            equity, candidate_trades = resolved
+            candidate_metrics = compute_metrics(equity, candidate_trades)
+            score = (candidate_metrics.sharpe, candidate_metrics.total_return)
+            if best_score is None or score > best_score:
+                best_params = deepcopy(candidate)
+                best_metrics = candidate_metrics
+                best_score = score
+
+        if best_params is None:
+            fold_results.append(
+                FoldEvaluation(
+                    fold=fold,
+                    selected_params=None,
+                    is_metrics=None,
+                    oos_metrics=None,
+                )
+            )
+            continue
+
+        frozen_params = deepcopy(best_params)
+        output = callback(deepcopy(frozen_params), fold, sizing, "oos")
+        resolved_oos = _resolve_output(output, fold, "oos")
+        if resolved_oos is None:
+            oos_metrics = None
+        else:
+            equity, trades = resolved_oos
+            oos_metrics = compute_metrics(equity, trades)
+            oos_equities.append(equity)
+            oos_trades.extend(trades)
+            fold_returns.append(oos_metrics.total_return)
+
+        seen_neighbors: set[object] = set()
+        selected_key = _params_key(frozen_params)
+        for neighbor in neighbors(deepcopy(frozen_params)):
+            neighbor_copy = deepcopy(dict(neighbor))
+            key = _params_key(neighbor_copy)
+            if key == selected_key or key in seen_neighbors:
+                continue
+            seen_neighbors.add(key)
+            neighbor_output = callback(neighbor_copy, fold, sizing, "oos")
+            resolved_neighbor = _resolve_output(neighbor_output, fold, "oos")
+            if resolved_neighbor is None:
+                continue
+            neighbor_equity, neighbor_trades = resolved_neighbor
+            neighbor_metrics = compute_metrics(neighbor_equity, neighbor_trades)
+            neighbor_valid += 1
+            if neighbor_metrics.total_return > 0.0:
+                neighbor_positive += 1
+
+        fold_results.append(
+            FoldEvaluation(
+                fold=fold,
+                selected_params=deepcopy(frozen_params),
+                is_metrics=best_metrics,
+                oos_metrics=oos_metrics,
+            )
+        )
+
+    if oos_equities:
+        combined_equity = _chain_equity(oos_equities)
+        metrics = compute_metrics(
+            combined_equity,
+            oos_trades,
+            fold_returns=fold_returns,
+        )
+    else:
+        metrics = _empty_metrics()
+    robustness = (
+        neighbor_positive / neighbor_valid if neighbor_valid else 0.0
+    )
+    return CandidateEvaluation(
+        fold_results=tuple(fold_results),
+        metrics=metrics,
+        neighbor_robustness=float(robustness),
+        neighbor_positive=neighbor_positive,
+        neighbor_valid=neighbor_valid,
+    )
+
+
+def passes_research_gates(
+    evaluation: CandidateEvaluation | Metrics,
+    *,
+    neighbor_robustness: float | None = None,
+) -> bool:
+    """Apply the final OOS gates while retaining Sharpe as a reported metric."""
+
+    if isinstance(evaluation, CandidateEvaluation):
+        metrics = evaluation.metrics
+        robustness = evaluation.neighbor_robustness
+        if neighbor_robustness is not None:
+            raise ValueError(
+                "neighbor_robustness is already part of CandidateEvaluation"
+            )
+    elif isinstance(evaluation, Metrics):
+        metrics = evaluation
+        if neighbor_robustness is None:
+            raise ValueError("neighbor_robustness is required with Metrics")
+        robustness = float(neighbor_robustness)
+    else:
+        raise TypeError("evaluation must be CandidateEvaluation or Metrics")
+
+    usable_folds = len(metrics.fold_returns)
+    positive_folds = sum(value > 0.0 for value in metrics.fold_returns)
+    return (
+        usable_folds > 0
+        and positive_folds > usable_folds / 2
+        and metrics.trades >= 30
+        and metrics.max_drawdown >= -0.30
+        and robustness >= 0.70
+    )
+
+
+def _coerce_equity(equity: pd.Series) -> pd.Series:
+    if not isinstance(equity, pd.Series):
+        raise TypeError("equity must be a pandas Series")
+    if equity.empty:
+        raise ValueError("equity cannot be empty")
+    if not isinstance(equity.index, pd.DatetimeIndex):
+        raise TypeError("equity index must be a DatetimeIndex")
+    if equity.index.tz is None:
+        raise ValueError("equity timestamps must be timezone-aware")
+    if equity.index.has_duplicates:
+        raise ValueError("equity timestamps must be unique")
+    values = pd.to_numeric(equity, errors="coerce").astype(float)
+    if not np.isfinite(values.to_numpy()).all():
+        raise ValueError("equity values must be finite")
+    if (values <= 0.0).any():
+        raise ValueError("equity values must be positive")
+    values.index = values.index.tz_convert("UTC")
+    return values.sort_index(kind="stable")
+
+
+def _trade_net_pnl(trade: object) -> float:
+    if isinstance(trade, Mapping):
+        value = trade.get("net_pnl")
+    else:
+        value = getattr(trade, "net_pnl", None)
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise TypeError("each trade must expose numeric net_pnl")
+    result = float(value)
+    if not isfinite(result):
+        raise ValueError("trade net_pnl must be finite")
+    return result
+
+
+def _daily_returns(event_equity: pd.Series) -> pd.Series:
+    start = event_equity.index[0]
+    end = event_equity.index[-1]
+    first_midnight = start.normalize()
+    if first_midnight <= start:
+        first_midnight += pd.Timedelta(days=1)
+    interior = pd.date_range(
+        first_midnight,
+        end,
+        freq="1D",
+        inclusive="left",
+    )
+    boundaries = pd.DatetimeIndex([start, *interior, end])
+    values = (
+        event_equity.reindex(event_equity.index.union(boundaries))
+        .sort_index(kind="stable")
+        .ffill()
+        .reindex(boundaries)
+    )
+    return values.pct_change(fill_method=None).dropna()
+
+
+def _validate_folds(folds: tuple[Fold, ...]) -> None:
+    if not folds:
+        raise ValueError("folds cannot be empty")
+    if len({fold.index for fold in folds}) != len(folds):
+        raise ValueError("fold indexes must be unique")
+    for left, right in zip(folds, folds[1:]):
+        if left.oos_start > right.oos_start:
+            raise ValueError("folds must be ordered by OOS start")
+        if left.oos_end > right.oos_start:
+            raise ValueError("OOS folds cannot overlap")
+
+
+def _resolve_output(
+    output: BacktestOutput | None,
+    fold: Fold,
+    phase: Phase,
+) -> tuple[pd.Series, list[object]] | None:
+    if output is None:
+        return None
+    if not isinstance(output, tuple) or len(output) != 2:
+        raise TypeError("callback must return (event_equity, trades) or None")
+    equity, trades = output
+    resolved_equity = _coerce_equity(equity)
+    start, end = (
+        (fold.is_start, fold.is_end)
+        if phase == "is"
+        else (fold.oos_start, fold.oos_end)
+    )
+    if resolved_equity.index[0] != start or resolved_equity.index[-1] != end:
+        raise ValueError(
+            f"{phase} equity must cover both fold window boundaries"
+        )
+    return resolved_equity, list(trades)
+
+
+def _chain_equity(segments: Sequence[pd.Series]) -> pd.Series:
+    chained: list[pd.Series] = []
+    level = 1.0
+    previous_end: pd.Timestamp | None = None
+    for raw_segment in segments:
+        segment = _coerce_equity(raw_segment)
+        if previous_end is not None and segment.index[0] < previous_end:
+            raise ValueError("OOS equity segments overlap")
+        normalized = segment / float(segment.iloc[0]) * level
+        if previous_end is not None and segment.index[0] == previous_end:
+            normalized = normalized.iloc[1:]
+        if not normalized.empty:
+            chained.append(normalized)
+        level *= float(segment.iloc[-1] / segment.iloc[0])
+        previous_end = segment.index[-1]
+    if not chained:
+        first = _coerce_equity(segments[0])
+        return pd.Series([1.0], index=first.index[:1])
+    return pd.concat(chained)
+
+
+def _params_key(params: Params) -> object:
+    try:
+        return tuple(sorted(params.items()))
+    except TypeError:
+        return repr(sorted((key, repr(value)) for key, value in params.items()))
+
+
+def _empty_metrics() -> Metrics:
+    return Metrics(
+        total_return=0.0,
+        sharpe=0.0,
+        max_drawdown=0.0,
+        trades=0,
+        win_rate=0.0,
+        fold_returns=(),
+    )
