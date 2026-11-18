@@ -11,4 +11,5 @@ reports/*.log
 intraday/*.jsonl
 intraday/SEARCH_*.md
 intraday/champion.json
+data/okx_cost_aware/
 .ssh/
